@@ -1,0 +1,91 @@
+# PYTHON_ARGCOMPLETE_OK
+import numpy as np
+import time
+import argparse
+from functools import partial
+from ur_simple_control.managers import getMinimalArgParser, ControlLoopManager, RobotManager
+from ur_simple_control.optimal_control.crocoddyl_optimal_control import createCrocoIKOCP, solveCrocoOCP
+from ur_simple_control.optimal_control.get_ocp_args import get_OCP_args
+from ur_simple_control.optimal_control.crocoddyl_mpc import CrocoIKMPC
+from ur_simple_control.basics.basics import followKinematicJointTrajP
+from ur_simple_control.util.logging_utils import LogManager
+from ur_simple_control.visualize.visualize import plotFromDict
+from ur_simple_control.clik.clik import getClikArgs
+import pinocchio as pin
+import crocoddyl
+import importlib.util
+import argcomplete
+
+
+def get_args():
+    parser = getMinimalArgParser()
+    parser = get_OCP_args(parser)
+    parser = getClikArgs(parser) # literally just for goal error
+    argcomplete.autocomplete(parser)
+    args = parser.parse_args()
+    return args
+
+
+if __name__ == "__main__": 
+    if importlib.util.find_spec('mim_solvers'):
+        import mim_solvers
+
+    args = get_args()
+    robot = RobotManager(args)
+    # TODO: put this back for nicer demos
+    #Mgoal = robot.defineGoalPointCLI()
+    Mgoal = pin.SE3.Random()
+    if robot.robot_name == "yumi":
+        Mgoal.rotation = np.eye(3)
+        Mgoal_transform = pin.SE3.Identity()
+        Mgoal_transform.translation[1] = 0.1
+        Mgoal_left = Mgoal_transform.act(Mgoal)
+        Mgoal_right = Mgoal_transform.inverse().act(Mgoal)
+        Mgoal = (Mgoal_left, Mgoal_right)
+
+    robot.Mgoal = Mgoal.copy()
+    if args.visualize_manipulator:
+        # TODO document this somewhere
+        robot.visualizer_manager.sendCommand({"Mgoal" : Mgoal})
+    # create and solve the optimal control problem of
+    # getting from current to goal end-effector position.
+    # reference is position and velocity reference (as a dictionary),
+    # while solver is a crocoddyl object containing a lot more information
+    # starting state
+    x0 = np.concatenate([robot.getQ(), robot.getQd()])
+    problem = createCrocoIKOCP(args, robot, x0, Mgoal)
+
+    # NOTE: this might be useful if we solve with a large time horizon,
+    # lower frequency, and then follow the predicted trajectory with velocity p-control
+    # this shouldn't really depend on x0 but i can't be bothered
+    #reference, solver = solveCrocoOCP(args, robot, problem, x0)
+    #if args.solver == "boxfddp":
+    #    log = solver.getCallbacks()[1]
+    #    crocoddyl.plotOCSolution(log.xs, log.us, figIndex=1, show=True)
+    #if args.solver == "csqp":
+    #    log = solver.getCallbacks()[1]
+    #    mim_solvers.plotOCSolution(log.xs, log.us, figIndex=1, show=True)
+
+    # we need a way to follow the reference trajectory,
+    # both because there can be disturbances,
+    # and because it is sampled at a much lower frequency
+    #followKinematicJointTrajP(args, robot, reference)
+
+    CrocoIKMPC(args, robot, Mgoal)
+
+    print("final position:")
+    print(robot.getT_w_e())
+
+    if args.save_log:
+        robot.log_manager.plotAllControlLoops()
+
+    if not args.pinocchio_only:
+        robot.stopRobot()
+
+    if args.visualize_manipulator:
+        robot.killManipulatorVisualizer()
+    
+    if args.save_log:
+        robot.log_manager.saveLog()
+    #loop_manager.stopHandler(None, None)
+

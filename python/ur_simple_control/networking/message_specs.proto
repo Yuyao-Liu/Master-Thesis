@@ -1,0 +1,19 @@
+edition = "2023";
+// syntax = "proto2";
+
+message joint_angles { repeated double q = 1; }
+
+// graziano's message
+message wrenches {
+  repeated double wrench = 1;
+  repeated double wrench_estimate = 2;
+}
+
+message wrench { repeated double wrench = 1; }
+
+// NOTE: you better know in which frame this will be
+message T_goal {
+  repeated double position = 1; // 3 double
+  repeated double rotation = 2; // 4 double (quaternion)
+  repeated double velocity = 3; // 6 double (
+}

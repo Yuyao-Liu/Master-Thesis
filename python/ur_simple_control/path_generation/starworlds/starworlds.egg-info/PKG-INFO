@@ -1,0 +1,9 @@
+Metadata-Version: 2.1
+Name: starworlds
+Version: 1.0
+License-File: LICENSE
+Requires-Dist: pyyaml
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: matplotlib
+Requires-Dist: shapely
