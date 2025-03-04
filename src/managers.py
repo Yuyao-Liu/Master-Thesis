@@ -13,7 +13,8 @@ from ur_simple_control.util.grippers.robotiq.robotiq_gripper import RobotiqGripp
 from ur_simple_control.util.grippers.on_robot.twofg import TWOFG
 import copy
 import signal
-from ur_simple_control.util.get_model import get_model, heron_approximation, heron_approximationDD, getGripperlessUR5e, mir_approximation, get_yumi_model
+from get_model import get_model, heron_approximation, heron_approximationDD, getGripperlessUR5e, mir_approximation, get_yumi_model
+# from ur_simple_control.util.get_model import get_model, heron_approximation, heron_approximationDD, getGripperlessUR5e, mir_approximation, get_yumi_model
 from collections import deque
 from ur_simple_control.visualize.visualize import plotFromDict, realTimePlotter, manipulatorVisualizer
 from ur_simple_control.util.logging_utils import LogManager
@@ -443,6 +444,9 @@ class RobotManager:
         if self.robot_name == "heronros":
             self.model, self.collision_model, self.visual_model, self.data = \
                  heron_approximation()
+        # if self.robot_name == "herondd":
+        #     self.model, self.collision_model, self.visual_model, self.data = \
+        #          heron_approximationyy()
         if self.robot_name == "mirros":
             self.model, self.collision_model, self.visual_model, self.data = \
                  mir_approximation()
