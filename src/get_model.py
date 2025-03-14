@@ -340,13 +340,15 @@ def heron_approximation():
 
     # pretty much random numbers
     # TODO: find heron (mir) numbers
+    body_placement = pin.SE3.Identity()
+    body_placement.translation[2] -= 0.2
+    body_placement.translation[0] += 0.1
     body_inertia = pin.Inertia.FromBox(30, 0.5, 0.3, 0.4)
     # maybe change placement to sth else depending on where its grasped
     model_mobile_base.appendBodyToJoint(
-        MOBILE_BASE_JOINT_ID, body_inertia, pin.SE3.Identity()
+        MOBILE_BASE_JOINT_ID, body_inertia, body_placement.copy()
     )
     box_shape = fcl.Box(0.5, 0.3, 0.4)
-    body_placement = pin.SE3.Identity()
     geometry_mobile_base = pin.GeometryObject(
         "box_shape", MOBILE_BASE_JOINT_ID, box_shape, body_placement.copy()
     )
