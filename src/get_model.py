@@ -41,6 +41,9 @@ def get_model():
     urdf_path_relative = files("ur_simple_control.robot_descriptions.urdf").joinpath(
         "ur5e_with_robotiq_hande_FIXED_PATHS.urdf"
     )
+    # urdf_path_relative = files("ur_simple_control.robot_descriptions.urdf").joinpath(
+    #     "model.urdf"
+    # )
     urdf_path_absolute = os.path.abspath(urdf_path_relative)
     mesh_dir = files("ur_simple_control")
     mesh_dir_absolute = os.path.abspath(mesh_dir)
@@ -306,6 +309,7 @@ def heron_approximation():
     parent_id = 0
     # TEST
     joint_placement = pin.SE3.Identity()
+    
     # joint_placement.rotation = pin.rpy.rpyToMatrix(0, -np.pi/2, 0)
     # joint_placement.translation[2] = 0.2
     # TODO TODO TODO TODO TODO TODO TODO TODO
@@ -341,21 +345,23 @@ def heron_approximation():
     # pretty much random numbers
     # TODO: find heron (mir) numbers
     body_placement = pin.SE3.Identity()
-    body_placement.translation[2] -= 0.2
-    body_placement.translation[0] += 0.1
+    # body_placement.translation[2] -= 0.2
+    # body_placement.translation[0] += 0.1
     body_inertia = pin.Inertia.FromBox(30, 0.5, 0.3, 0.4)
     # maybe change placement to sth else depending on where its grasped
     model_mobile_base.appendBodyToJoint(
-        MOBILE_BASE_JOINT_ID, body_inertia, body_placement.copy()
+        MOBILE_BASE_JOINT_ID, body_inertia, joint_placement.copy()
     )
     box_shape = fcl.Box(0.5, 0.3, 0.4)
     geometry_mobile_base = pin.GeometryObject(
-        "box_shape", MOBILE_BASE_JOINT_ID, box_shape, body_placement.copy()
+        "box_shape", MOBILE_BASE_JOINT_ID, box_shape, joint_placement.copy()
     )
 
     geometry_mobile_base.meshColor = np.array([1.0, 0.1, 0.1, 1.0])
     geom_model_mobile_base.addGeometryObject(geometry_mobile_base)
-
+    
+    joint_placement.translation[0] = -0.1
+    joint_placement.translation[2] = 0.2
     # have to add the frame manually
     model_mobile_base.addFrame(
         pin.Frame(

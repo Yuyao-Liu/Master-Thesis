@@ -97,11 +97,12 @@ if __name__ == "__main__":
     # args.clik_controller = "dPi_adptive_manipulability"
     # args.clik_controller = "dPi_Weighted"
     # args.clik_controller = "taskPriorityInverse"
-    args.clik_controller = "dPi_Weighted_nullspace"
+    # args.clik_controller = "dPi_Weighted_nullspace"
+    args.clik_controller = "keep_distance_nullspace"
     
     args.pinocchio_only=True
     args.visualizer=True
-    args.plotter = False
+    args.plotter = True
     # (robot='heron', simulation=False, robot_ip='192.168.1.102', pinocchio_only=True, ctrl_freq=500, fast_simulation=False, visualizer=True, plotter=True, gripper='none', max_iterations=100000, speed_slider=1.0, start_from_current_pose=False, acceleration=0.3, max_qd=0.5, debug_prints=False, save_log=False, save_dir='./data', run_name='latest_run', index_runs=False, past_window_size=5, controller_speed_scaling=1.0, contact_detecting_force=2.8, minimum_detectable_force_norm=3.0, visualize_collision_approximation=True, goal_error=0.01, tikhonov_damp=0.001, clik_controller='dampedPseudoinverse', alpha=0.01, beta=0.01, max_init_clik_iterations=10000, max_running_clik_iterations=1000, viz_test_path=False, randomly_generate_goal=False
     args.simulation = True
     robot = RobotManager(args)
@@ -118,7 +119,7 @@ if __name__ == "__main__":
     if args.visualizer:
         robot.visualizer_manager.sendCommand({"Mgoal": Mgoal})
     time.sleep(5)
-    park_base(args, robot, (-1.2, -2.5, 0))
+    park_base(args, robot, (-1.0, -2.5, 0))
     moveL(args, robot, Mgoal)
     print('moveL done')
     print(robot.getQ())

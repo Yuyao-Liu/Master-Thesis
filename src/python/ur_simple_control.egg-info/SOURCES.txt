@@ -29,7 +29,6 @@ examples/pin_contact3d.py
 examples/point_impedance_control.py
 examples/pushing_via_friction_cones.py
 examples/test_crocoddyl_opt_ctrl.py
-examples/__pycache__/robotiq_gripper.cpython-310.pyc
 examples/data/clik_comparison_0.pickle
 examples/data/clik_comparison_1.pickle
 examples/data/fts.png
@@ -92,6 +91,7 @@ initial_python_solution/robot_stuff/__pycache__/utils.cpython-311.pyc
 initial_python_solution/robot_stuff/__pycache__/webots_api_helper_funs.cpython-310.pyc
 initial_python_solution/robot_stuff/__pycache__/webots_api_helper_funs.cpython-311.pyc
 ur_simple_control/__init__.py
+ur_simple_control/args_to_robot.py
 ur_simple_control/managers.py
 ur_simple_control.egg-info/PKG-INFO
 ur_simple_control.egg-info/SOURCES.txt

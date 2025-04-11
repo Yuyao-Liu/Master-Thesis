@@ -106,14 +106,6 @@ def compute_manipulability(J):
     # print(np.linalg.det(J @ J.T))
     return np.sqrt(np.linalg.det(J @ J.T) + np.eye(J.shape[0], J.shape[0]) * 1e-6)
 
-def add_bias_and_noise(vec):
-    noise_std=0.01
-    bias = np.random.uniform(low=-0.5, high=0.5, size=vec.shape)
-    vec = np.asarray(vec)
-    bias = np.asarray(bias) if isinstance(bias, (list, np.ndarray)) else bias
-    noise = np.random.normal(loc=0.0, scale=noise_std, size=vec.shape)
-    return vec + bias + noise
-
 # Transform a velocity vector from the world frame to the end-effector (EE) frame
 def transform_velocity_to_e(robot: RobotManager):
     """
@@ -449,7 +441,6 @@ def parking_base(q, target_pose):
     return qd
 
 def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
-    # q = add_bias_and_noise(q)
     (x_base, y_base, theta_base) = (q[0], q[1], np.arctan2(q[3], q[2]))
     T_w_e = robot.getT_w_e()
     (x_ee, y_ee) = (T_w_e.translation[0], T_w_e.translation[1])
@@ -475,9 +466,16 @@ def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
     dx = x_ee - x_base
     dy = y_ee - y_base
     d_current = np.hypot(dx, dy)
-    print(d_current)
+    # print(d_current)
     I = np.eye(J.shape[1])
     N = I - J_pseudo @ J
+    
+    # J_arm = J[:, 2:]
+    # J_armx = J_arm[0, :]
+    # J_army = J_arm[1, :]
+    # grad_f = np.hstack([-dx, 0, dx * J_armx + dy * J_army])
+    # z1 = -5 * np.sign(d_current - d_target) * grad_f
+    # print(z1)
     
     Jx = J[0, :]
     Jy = J[1, :]
@@ -527,18 +525,22 @@ def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
     dir_e_z = np.array([T_w_e.rotation[0, 2], T_w_e.rotation[0, 1]])
     theta = angle_between_vectors(dir_vee, dir_base)
     # theta = angle_between_vectors(dir_e_z, dir_base)
+    # theta_vee = np.arctan2(dir_vee[1], dir_vee[0])
+    # theta = (theta_base - theta_vee)
+    # print(dir_e_z)
+    # theta = angle_between_vectors(dir_eb, dir_base)
+    # print(dir_ee)
+    # print(dir_base)
+    # print(theta)
+    # print()
     z2[1] = 0.5 * (theta)
-    # z2[2] = -z2[1]
+    z2[2] = -z2[1]
     # print(z2[1])
-    print(q[4])
-    if np.abs(d_current - d_target) < 0.05:
-        qd_null = N @ (z1 + z2)
-        # qd_null = N @ z2
-    else:
-        qd_null = N @ z1
+    qd_null = N @ (z1 + z2)
+    # qd_null = N @ z2
+    
     # Combine primary task velocity and null space velocity
     return qd_task + qd_null
-
 
 def getClikController(args, robot):
     """
@@ -582,19 +584,17 @@ def controlLoopClik_u_ref(robot: RobotManager, Adaptive_controller, clik_control
     # err_vector = u_ref_e
     v = -np.pi/40
     R = 0.5
-    mode = 1
-    if mode == 1:
-        # open a revolving door
-        err_vector = np.array([0, 0, v, -v/R, 0, 0])
-    elif mode == 2:
-        # open a revolving drawer
-        err_vector = np.array([0, 0, v, 0, -v/R, 0])
-    elif mode == 3:
-        # open a sliding door
-        err_vector = np.array([0, -v, 0, 0, 0, 0])
-    elif mode == 4:
-        # open a sliding drawer
-        err_vector = np.array([0, 0, v, 0, 0, 0])
+    # open a revolving door
+    # err_vector = np.array([0,0,v,-v/R,0,0])
+    
+    # open a revolving drawer
+    # err_vector = np.array([0,0,v,0,-v/R,0])
+    
+    # open a sliding door
+    err_vector = np.array([0,-v,0,0,0,0])
+    
+    # open a sliding drawer
+    # err_vector = np.array([0,0,v,0,0,0])
 
     # err_vector = robot.u_ref_w
     
@@ -617,7 +617,7 @@ def controlLoopClik_u_ref(robot: RobotManager, Adaptive_controller, clik_control
             
     qd = np.insert(qd, 1, 0)
     # v_x, v_y, omega, q_1, q_2, q_3, q_4, q_5, q_6,
-    # qd = np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0])
+    # qd = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
     robot.sendQd(qd)
     err_vector = compute_ee2basedistance(robot)
     log_item["qs"] = q.reshape((robot.model.nq,))
