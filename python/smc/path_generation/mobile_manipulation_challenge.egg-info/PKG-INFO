@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: mobile_manipulation_challenge
+Version: 1.0
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: matplotlib
+Requires-Dist: shapely
+Requires-Dist: pyyaml

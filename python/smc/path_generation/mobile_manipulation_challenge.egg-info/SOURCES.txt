@@ -1,0 +1,7 @@
+README.md
+setup.py
+mobile_manipulation_challenge.egg-info/PKG-INFO
+mobile_manipulation_challenge.egg-info/SOURCES.txt
+mobile_manipulation_challenge.egg-info/dependency_links.txt
+mobile_manipulation_challenge.egg-info/requires.txt
+mobile_manipulation_challenge.egg-info/top_level.txt
