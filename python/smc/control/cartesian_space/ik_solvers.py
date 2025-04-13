@@ -71,6 +71,110 @@ def getIKSolver(
     # default
     return partial(dampedPseudoinverse, args.tikhonov_damp)
 
+def compute_manipulability(J):
+    # print(np.linalg.det(J @ J.T))
+    return np.sqrt(np.linalg.det(J @ J.T) + np.eye(J.shape[0], J.shape[0]) * 1e-6)
+
+def add_bias_and_noise(vec):
+    noise_std=0.01
+    bias = np.random.uniform(low=-0.5, high=0.5, size=vec.shape)
+    vec = np.asarray(vec)
+    bias = np.asarray(bias) if isinstance(bias, (list, np.ndarray)) else bias
+    noise = np.random.normal(loc=0.0, scale=noise_std, size=vec.shape)
+    return vec + bias + noise
+
+# Transform a velocity vector from the world frame to the end-effector (EE) frame
+def transform_velocity_to_e(robot):
+    """
+    Transform a velocity vector from the world frame to the end-effector (EE) frame.
+
+    Parameters:
+    - T_w_e: SE3 transformation matrix (Pinocchio SE3 object), representing the pose of the end-effector in the world frame.
+    - u_ref_w: 6D velocity vector [v_x, v_y, v_z, ω_x, ω_y, ω_z] in the world frame.
+
+    Returns:
+    - u_ref_e: 6D velocity vector in the EE frame.
+    """
+    # Extract the rotation matrix R_w_e (3x3)
+    T_w_e = robot.getT_w_e()
+    R_w_e = T_w_e.rotation  
+
+    # Extract linear and angular velocity components in the world frame
+    u_ref_w = robot.u_ref_w
+    v_w = u_ref_w[:3]  # Linear velocity in the world frame
+    omega_w = u_ref_w[3:]  # Angular velocity in the world frame
+
+    # Transform velocities to the EE frame
+    v_e = R_w_e.T @ v_w  # Linear velocity in the EE frame
+    omega_e = R_w_e.T @ omega_w  # Angular velocity in the EE frame
+
+    # Combine into a 6D velocity vector
+    u_ref_e = np.hstack((v_e, omega_e))
+    
+    return u_ref_e
+
+def compute_ee2basedistance(robot):
+    q = robot.getQ()
+    x_base = q[0]
+    y_base = q[1]
+    T_w_e = robot.getT_w_e()
+    x_ee = T_w_e.translation[0]
+    y_ee = T_w_e.translation[1]
+    d = np.sqrt((x_base-x_ee)**2+(y_base-y_ee)**2)
+    return d
+
+def parking_base(q, target_pose):
+    """
+    Compute the linear velocity (v) and angular velocity (omega) for a differential drive robot.
+    
+    Parameters:
+    - q: Robot state, where q[0] and q[1] represent the x and y coordinates, and q[2], q[3] are quaternion values.
+    - target_pose: (x, y, theta) Target position in meters and radians.
+
+    Returns:
+    - qd: An array containing the computed velocities.
+    """
+
+    # Control gains (adjustable)
+    k1 = 1.0  # Linear velocity gain
+    k2 = 2.0  # Angular velocity gain
+    k3 = 1.0  # Orientation error gain
+
+    # Extract robot's current pose
+    x_r, y_r, theta_r = (q[0], q[1], np.arctan2(q[3], q[2]))  
+    x_t, y_t, theta_t = target_pose  
+
+    # Compute the relative position between robot and target
+    dx = x_r - x_t
+    dy = y_r - y_t
+    rho = np.hypot(dx, dy)  # Euclidean distance to the target
+
+    # Calculate the target's bearing angle in the global frame
+    theta_target = np.arctan2(dy, dx)
+
+    # Compute the bearing error in the robot's local frame
+    gamma = theta_target - theta_r + np.pi  # Adjust for orientation
+
+    # Normalize the angle to (-pi, pi] range
+    gamma = (gamma + np.pi) % (2 * np.pi) - np.pi
+
+    # Compute the final orientation error
+    delta = gamma + theta_r - theta_t
+    delta = (delta + np.pi) % (2 * np.pi) - np.pi  # Normalize again
+
+    # Compute linear velocity
+    v = k1 * rho * np.cos(gamma)
+
+    # Compute angular velocity, avoiding division by zero
+    if gamma == 0:
+        omega = 0  
+    else:
+        omega = k2 * gamma + k1 * (np.sin(gamma) * np.cos(gamma) / gamma) * (gamma + k3 * delta)
+
+    # Construct the velocity output array
+    qd = np.array([v, 0, omega, 0, 0, 0, 0, 0, 0])
+    return qd
+
 
 def dampedPseudoinverse(
     tikhonov_damp: float, J: np.ndarray, err_vector: np.ndarray

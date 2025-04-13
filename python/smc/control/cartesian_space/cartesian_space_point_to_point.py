@@ -63,6 +63,50 @@ def controlLoopClik(
 
     return v_cmd, {}, {}
 
+def controlLoopClik_park(robot, clik_controller, target_pose, i, past_data):
+    breakFlag = False
+    log_item = {}
+    save_past_item = {}
+    q = robot.q
+    v_cmd = clik_controller(q, target_pose)
+    if np.linalg.norm(np.array(target_pose)-[q[0], q[1], np.arctan2(q[3], q[2])]) < robot.args.goal_error:
+        breakFlag = True
+    robot.sendVelocityCommand(v_cmd)
+
+    log_item = {
+        "qs": np.zeros(robot.nq),
+        "dqs": np.zeros(robot.nv),
+        "dqs_cmd": np.zeros(robot.nv),
+        "err_norm": np.zeros(1),
+    }
+    save_past_dict = {}
+    # we're not saving here, but need to respect the API,
+    # hence the empty dict
+    return breakFlag, save_past_item, log_item
+
+def park_base(
+    args: Namespace, robot: SingleArmInterface, target_pose: pin.SE3, run=True
+) -> None | ControlLoopManager:
+    
+    # assert type(T_w_goal) == pin.SE3
+    controlLoop = partial(controlLoopClik_park, robot, parking_base, target_pose)
+    # we're not using any past data or logging, hence the empty arguments
+    log_item = {
+        "qs": np.zeros(robot.model.nq),
+        "dqs": np.zeros(robot.model.nv),
+        "dqs_cmd": np.zeros(robot.model.nv),
+        "err_norm": np.zeros(1),
+    }
+    save_past_dict = {
+        "dqs_cmd": np.zeros(robot.model.nv),
+    }
+    loop_manager = ControlLoopManager(
+        robot, controlLoop, args, save_past_dict, log_item
+    )
+    if run:
+        loop_manager.run()
+    else:
+        return loop_manager
 
 def moveL(
     args: Namespace, robot: SingleArmInterface, T_w_goal: pin.SE3, run=True
@@ -94,7 +138,6 @@ def moveL(
         loop_manager.run()
     else:
         return loop_manager
-
 
 # TODO: implement
 def moveLFollowingLine(
