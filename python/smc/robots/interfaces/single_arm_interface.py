@@ -40,7 +40,7 @@ class SingleArmInterface(AbstractRobotManager):
 
     def getJacobian(self) -> np.ndarray:
         return pin.computeFrameJacobian(
-            self.model, self.data, self._q, self._ee_frame_id
+            self.model, self.data, self._q, self._ee_frame_id,
         )
 
     def forwardKinematics(self):

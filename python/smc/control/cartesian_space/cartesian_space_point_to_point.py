@@ -63,6 +63,51 @@ def controlLoopClik(
 
     return v_cmd, {}, {}
 
+def controlLoopClik_only_arm(
+    #                       J           err_vec     v_cmd
+    ik_solver: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    T_w_goal: pin.SE3,
+    args: Namespace,
+    robot: SingleArmInterface,
+    t: int,
+    past_data: dict[str, deque[np.ndarray]],
+) -> tuple[np.ndarray, dict[str, np.ndarray], dict[str, np.ndarray]]:
+    """
+    controlLoopClik
+    ---------------
+    generic control loop for clik (handling error to final point etc).
+    in some version of the universe this could be extended to a generic
+    point-to-point motion control loop.
+    """
+    T_w_e = robot.T_w_e
+    SEerror = T_w_e.actInv(T_w_goal)
+    err_vector = pin.log6(SEerror).vector
+    J = robot.getJacobian()
+    J = J[:, 3:]
+    # compute the joint velocities based on controller you passed
+    # qd = ik_solver(J, err_vector, past_qd=past_data['dqs_cmd'][-1])
+    if args.ik_solver == "QPManipMax":
+        v_cmd = QPManipMax(
+            J,
+            err_vector,
+            robot.computeManipulabilityIndexQDerivative(),
+            lb=-1 * robot.max_v,
+            ub=robot.max_v,
+        )
+    else:
+        v_cmd = ik_solver(J, err_vector)
+    if v_cmd is None:
+        print(
+            t,
+            "the controller you chose produced None as output, using dampedPseudoinverse instead",
+        )
+        v_cmd = dampedPseudoinverse(1e-2, J, err_vector)
+    else:
+        if args.debug_prints:
+            print(t, "ik solver success")
+    v_cmd = np.concatenate((np.zeros(3), v_cmd))
+    return v_cmd, {}, {}
+
 def controlLoopClik_park(robot, clik_controller, target_pose, i, past_data):
     breakFlag = False
     log_item = {}
@@ -108,7 +153,7 @@ def park_base(
     else:
         return loop_manager
 
-def moveL(
+def moveL_only_arm(
     args: Namespace, robot: SingleArmInterface, T_w_goal: pin.SE3, run=True
 ) -> None | ControlLoopManager:
     """
@@ -121,7 +166,7 @@ def moveL(
     assert type(T_w_goal) == pin.SE3
     ik_solver = getIKSolver(args, robot)
     controlLoop = partial(
-        EEP2PCtrlLoopTemplate, ik_solver, T_w_goal, controlLoopClik, args, robot
+        EEP2PCtrlLoopTemplate, ik_solver, T_w_goal, controlLoopClik_only_arm, args, robot
     )
     # we're not using any past data or logging, hence the empty arguments
     log_item = {
@@ -138,6 +183,79 @@ def moveL(
         loop_manager.run()
     else:
         return loop_manager
+
+def move_u_ref(args: Namespace, robot: SingleArmInterface, Adaptive_controller, run=True):
+    """
+    move_u_ref
+    -----
+    come from moveL
+    send a reference twist u_ref_w instead.
+    """
+    controlLoop = partial(controlLoopClik_u_ref, robot, Adaptive_controller)
+    # we're not using any past data or logging, hence the empty arguments
+    log_item = {
+        "qs": np.zeros(robot.nq),
+        "dqs": np.zeros(robot.nv),
+        "dqs_cmd": np.zeros(robot.nv),
+        "err_norm": np.zeros(1),
+    }
+    save_past_dict = {}
+    loop_manager = ControlLoopManager(
+        robot, controlLoop, args, save_past_dict, log_item
+    )
+    if run:
+        loop_manager.run()
+    else:
+        return loop_manager
+
+def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, i, past_data):
+    breakFlag = False
+    log_item = {}
+    save_past_item = {}
+    q = robot.q
+    # x, y, z, omega, q_1, q_2, q_3, q_4, q_5, q_6, g_1, g_2
+    # print(q)
+    # TODO set a proper omega
+    # v_ref = Adaptive_controller.get_v_ref()
+    # robot.u_ref_w = np.hstack((v_ref, np.zeros(3)))
+    # print(robot.u_ref_w)
+    
+    # Convert the twist u_ref_w (6D) in world frame to ee frame
+    # u_ref_e = transform_velocity_to_e(robot)
+    # print(u_ref_e)
+    # err_vector = u_ref_e
+    v = -np.pi/40
+    R = 0.5
+    mode = 1
+    if mode == 1:
+        # open a revolving door
+        err_vector = np.array([0, 0, v, -v/R, 0, 0])
+    elif mode == 2:
+        # open a revolving drawer
+        err_vector = np.array([0, 0, v, 0, -v/R, 0])
+    elif mode == 3:
+        # open a sliding door
+        err_vector = np.array([0, -v, 0, 0, 0, 0])
+    elif mode == 4:
+        # open a sliding drawer
+        err_vector = np.array([0, 0, v, 0, 0, 0])
+
+    # err_vector = robot.u_ref_w
+    
+    # J = pin.computeFrameJacobian(robot.model, robot.data, q, robot.ee_frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
+    J = pin.computeFrameJacobian(robot.model, robot.data, q, robot.ee_frame_id, pin.ReferenceFrame.LOCAL)
+    # print(J)
+    # delete the second columm of Jacobian matrix, cuz y_dot is always 0
+    # J[:, 1] = 1e-6
+    
+    
+    # compute the joint velocities based on controller you passed
+    v_cmd = keep_distance_nullspace(1e-3, q, J, err_vector, robot)
+    v_cmd = np.insert(v_cmd, 1, 0)
+    robot.sendVelocityCommand(v_cmd)
+    # v_x, v_y, omega, q_1, q_2, q_3, q_4, q_5, q_6,
+    # qd = np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0])
+    return breakFlag, save_past_item, log_item
 
 # TODO: implement
 def moveLFollowingLine(

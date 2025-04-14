@@ -167,7 +167,8 @@ def get_mobile_base_model(underactuated: bool) -> tuple[pin.Model, pin.GeometryM
 
     geometry_mobile_base.meshColor = np.array([1.0, 0.1, 0.1, 1.0])
     geom_model_mobile_base.addGeometryObject(geometry_mobile_base)
-
+    joint_placement.translation[0] = -0.1
+    joint_placement.translation[2] = 0.2
     # have to add the frame manually
     model_mobile_base.addFrame(
         pin.Frame(
