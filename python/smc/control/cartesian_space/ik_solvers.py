@@ -191,15 +191,15 @@ def jacobianTranspose(J: np.ndarray, err_vector: np.ndarray) -> np.ndarray:
     qd = J.T @ err_vector
     return qd
 
-
+import pinocchio as pin
 def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
     J = np.delete(J, 1, axis=1)
     # q = add_bias_and_noise(q)
     (x_base, y_base, theta_base) = (q[0], q[1], np.arctan2(q[3], q[2]))
     T_w_e = robot.T_w_e
     (x_ee, y_ee) = (T_w_e.translation[0], T_w_e.translation[1])
-    # J_w = pin.computeFrameJacobian(robot.model, robot.data, q, robot.ee_frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
-    
+    J_lw = pin.computeFrameJacobian(robot.model, robot.data, q, robot.ee_frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
+    # J_w = pin.computeFrameJacobian(robot.model, robot.data, q, robot.ee_frame_id, pin.ReferenceFrame.WORLD)
     # joint_weights = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
     # W = np.diag(joint_weights)
 
@@ -236,9 +236,11 @@ def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
     z2 = np.zeros_like(z1)
     
     
+    J_lw = np.delete(J_lw,1,axis=1)
+    xd = J_lw @ qd_task
     # J_w = np.delete(J_w,1,axis=1)
-    xd = J @ qd_task
-    
+    # xd_s = J_w @ qd_task
+    # print(xd_s-xd)
     # qd = robot.getQd()
     # xd = J_w @ qd
     # print(xd)
@@ -272,16 +274,18 @@ def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
     dir_e_z = np.array([T_w_e.rotation[0, 2], T_w_e.rotation[0, 1]])
     theta = angle_between_vectors(dir_vee, dir_base)
     # theta = angle_between_vectors(dir_e_z, dir_base)
-    z2[1] = 0.5 * (theta)
+    z2[1] = 2 * (theta)
     # z2[2] = -z2[1]
     # print(z2[1])
-    if np.abs(d_current - d_target) < 0.05:
+    if d_current < 0.62:
         qd_null = N @ (z1 + z2)
         # qd_null = N @ z2
     else:
-        qd_null = N @ z1
+        qd_null = N @ z2
+    qd_null = N @ (z1 + z2)
     # Combine primary task velocity and null space velocity
-    return qd_task + qd_null
+    qd = np.insert(qd_task + qd_null, 1, 0)
+    return qd
 
 # TODO: put something into q of the QP
 # also, put in lb and ub

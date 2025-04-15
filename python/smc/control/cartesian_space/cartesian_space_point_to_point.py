@@ -225,7 +225,7 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, i, pas
     # print(u_ref_e)
     # err_vector = u_ref_e
     v = -np.pi/40
-    R = 0.5
+    R = 1
     mode = 1
     if mode == 1:
         # open a revolving door
@@ -239,7 +239,9 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, i, pas
     elif mode == 4:
         # open a sliding drawer
         err_vector = np.array([0, 0, v, 0, 0, 0])
-
+    elif mode == 5:
+        # open a sliding drawer
+        err_vector = np.array([0, 0, 0, 1, 0, 0])
     # err_vector = robot.u_ref_w
     
     # J = pin.computeFrameJacobian(robot.model, robot.data, q, robot.ee_frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
@@ -251,7 +253,6 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, i, pas
     
     # compute the joint velocities based on controller you passed
     v_cmd = keep_distance_nullspace(1e-3, q, J, err_vector, robot)
-    v_cmd = np.insert(v_cmd, 1, 0)
     robot.sendVelocityCommand(v_cmd)
     # v_x, v_y, omega, q_1, q_2, q_3, q_4, q_5, q_6,
     # qd = np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0])
