@@ -107,7 +107,7 @@ class MeshcatVisualizer(PMV):
         self.addSphere(point_name, radius, color)
         self.applyConfiguration(point_name, point)
         self.n_points += 1
-
+        
     def addPath(
         self, name, path: list[pin.SE3] | np.ndarray, radius=5e-3, color=[0, 0, 1, 0.8]
     ):

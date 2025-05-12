@@ -9,7 +9,7 @@ from qpsolvers import solve_qp
 import argparse
 import importlib
 import proxsuite
-
+from scipy.spatial.transform import Rotation as R
 if importlib.util.find_spec("shapely"):
     from ur_simple_control.path_generation.planner import (
         path2D_to_timed_SE3,
@@ -448,8 +448,9 @@ def parking_base(q, target_pose):
     qd = np.array([v, 0, omega, 0, 0, 0, 0, 0, 0, 0, 0])
     return qd
 
+
 def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
-    # q = add_bias_and_noise(q)
+    q = add_bias_and_noise(q)
     (x_base, y_base, theta_base) = (q[0], q[1], np.arctan2(q[3], q[2]))
     T_w_e = robot.getT_w_e()
     (x_ee, y_ee) = (T_w_e.translation[0], T_w_e.translation[1])
@@ -530,12 +531,13 @@ def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
     z2[1] = 0.5 * (theta)
     # z2[2] = -z2[1]
     # print(z2[1])
-    print(q[4])
-    if np.abs(d_current - d_target) < 0.05:
-        qd_null = N @ (z1 + z2)
-        # qd_null = N @ z2
-    else:
-        qd_null = N @ z1
+    # print(q[4])
+    # if np.abs(d_current - d_target) < 0.05:
+    #     qd_null = N @ (z1 + z2)
+    #     # qd_null = N @ z2
+    # else:
+    #     qd_null = N @ z1
+    qd_null = N @ (z1 + z2)
     # Combine primary task velocity and null space velocity
     return qd_task + qd_null
 
@@ -581,7 +583,7 @@ def controlLoopClik_u_ref(robot: RobotManager, Adaptive_controller, clik_control
     # print(u_ref_e)
     # err_vector = u_ref_e
     v = -np.pi/40
-    R = 0.5
+    R = 1
     mode = 1
     if mode == 1:
         # open a revolving door

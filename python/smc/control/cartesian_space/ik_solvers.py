@@ -219,7 +219,7 @@ def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
     dx = x_ee - x_base
     dy = y_ee - y_base
     d_current = np.hypot(dx, dy)
-    print(d_current)
+    # print(d_current)
     I = np.eye(J.shape[1])
     N = I - J_pseudo @ J
     

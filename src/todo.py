@@ -11,23 +11,32 @@ import argparse
 import numpy as np
 import pinocchio as pin
 import time
+import scipy.io as sio
+import os
 
 class Adaptive_controller_manager:
-    def __init__(self, robot, alpha=1, beta=1, gamma=1):
+    def __init__(self, robot, alpha=1, beta=1, gamma=2000):
         self.robot = robot
+        self.robot.v_ee = 0
         # hyper-parameters
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
-        self.gain_matrix = np.eye(3)
+        self.gain_matrix = np.eye(3)*2000
         # target
         self.f_d = np.zeros(3)
-        self.v_d = 0.1
+        self.v_d = np.pi/40
         # initalize parameter
         self.err_sum = np.zeros(3)
-        self.x_h_oe = np.array([1, 0, 0])
+        self.x_h = np.array([1, -2, 3])
         self.v_f = np.zeros(3)
-        self.v_ref = np.zeros(3)
+        self.v_ref = np.array([1, 0, 0])
+        self.k_h = np.array([3, -1, 2])
+        self.time = time.perf_counter()
+        self.starttime = time.perf_counter()
+        self.x_h_history = []
+        self.k_history = []
+        self.v_ref_history = []
         
     @staticmethod
     def Proj(x):
@@ -35,8 +44,8 @@ class Adaptive_controller_manager:
     
     def get_v_ref(self):
         self.get_v_f()
-        self.v_ref = self.v_d * self.x_h_oe - self.Proj(self.x_h_oe) @ self.v_f
-        self.get_x_h_oe()
+        self.v_ref = self.v_d * self.x_h - self.Proj(self.x_h) @ self.v_f
+        self.get_x_h()
         return self.v_ref
     
     def get_v_f(self):
@@ -45,15 +54,47 @@ class Adaptive_controller_manager:
         f = f[:3]
         # print(f)
         f_error = f - self.f_d
-        self.err_sum += self.Proj(self.x_h_oe) @ f_error 
+        self.err_sum += self.Proj(self.x_h) @ f_error 
         self.v_f = self.alpha * f_error + self.beta * self.err_sum
     
-    def get_x_h_oe(self):
-        v_ref_s = np.sign(np.dot(self.x_h_oe.T, self.v_ref)) * np.linalg.norm(self.v_ref)
-        k_oe = np.cross(self.gain_matrix @ self.x_h_oe, self.v_ref)
-        self.x_h_oe = -self.gamma * v_ref_s * self.Proj(self.x_h_oe) @ self.v_f - v_ref_s * np.cross(self.x_h_oe, k_oe)
-        self.x_h_oe = self.x_h_oe / np.linalg.norm(self.x_h_oe)
+    def update_time(self):
+        self.time = time.perf_counter()
+        
+    def get_x_h(self):
+        # save data
+        self.x_h_history.append(self.x_h.copy())
+        self.k_history.append(self.k_h.copy())
+        
+        dt = time.perf_counter() - self.time
+        self.time = time.perf_counter()
+        
+        T_w_e = self.robot.T_w_e
+        self.v_ref = -T_w_e.rotation[:, 2] * abs(self.robot.v_ee)
+        vf = self.v_ref
+        self.v_ref_history.append((-T_w_e.rotation[:, 2]).copy())
+        
+        v_ref_norm = np.sign(np.dot(self.x_h.T, self.v_ref)) * np.linalg.norm(vf)
 
+        k_dot = self.gain_matrix @ np.cross(self.x_h, vf)
+        self.k_h = self.k_h + dt * k_dot
+
+        x_h_dot = self.gamma * v_ref_norm * self.Proj(self.x_h) @ vf - v_ref_norm * np.cross(self.x_h, self.k_h)
+        self.x_h = self.x_h + dt * x_h_dot
+        self.x_h = self.x_h / np.linalg.norm(self.x_h)
+
+        # print(self.time - self.starttime)
+        if len(self.x_h_history) == 2e4:
+            self.save_history_to_mat("log.mat")
+        return self.x_h
+
+    def save_history_to_mat(self, filename):
+        sio.savemat(filename, {
+            "x_h_oe_history": np.array(self.x_h_history),
+            "k_oe_history": np.array(self.k_history),
+            "v_ref_history": np.array(self.v_ref_history)
+        })
+        print(f"Data are saved in {filename}")
+        
 def get_args() -> argparse.Namespace:
     parser = getMinimalArgParser()
     parser.description = "Run closed loop inverse kinematics \
@@ -88,20 +129,21 @@ if __name__ == "__main__":
     theta = np.radians(90)
     # rotation = np.array([[np.cos(theta), -np.sin(theta), 0], [-np.sin(theta), -np.cos(theta), 0], [0, 0, -1]])
     rotation = np.array([[0, 0, 1], [0, 1, 0], [1, 0, 0]])
-    Mgoal = pin.SE3(rotation, translation)
+    handle_pose = pin.SE3(rotation, translation)
     # Mgoal = getRandomlyGeneratedGoal(args)
-
+    robot.handle_pose = handle_pose
+    robot.angle_desired = 120
     if args.visualizer:
-        robot.visualizer_manager.sendCommand({"Mgoal": Mgoal})
+        robot.visualizer_manager.sendCommand({"Mgoal": handle_pose})
         
-    time.sleep(5)
+    # time.sleep(5)
     park_base(args, robot, (-1.2, -2.5, 0))
-    moveL_only_arm(args, robot, Mgoal)
+    moveL_only_arm(args, robot, handle_pose)
     print('moveL done')
+    Adaptive_controller.update_time()
     move_u_ref(args, robot, Adaptive_controller)
     robot.closeGripper()
     robot.openGripper()
-
     if args.real:
         robot.stopRobot()
 

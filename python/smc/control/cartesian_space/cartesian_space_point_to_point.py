@@ -15,7 +15,7 @@ import numpy as np
 from argparse import Namespace
 from collections import deque
 from typing import Callable
-
+from scipy.spatial.transform import Rotation as R
 from smc.control.cartesian_space.ik_solvers import QPManipMax
 
 
@@ -184,6 +184,47 @@ def moveL_only_arm(
     else:
         return loop_manager
 
+def rotate_point_and_orientation(handle_pose, axis_point, axis_direction, angle_deg):
+    (pos, orientation) = (handle_pose.translation, handle_pose.rotation)
+    axis_direction = axis_direction / np.linalg.norm(axis_direction)
+
+    rot = R.from_rotvec(np.deg2rad(angle_deg) * axis_direction)
+
+    pos_relative = pos - axis_point
+
+    pos_rotated = rot.apply(pos_relative)
+
+    new_translation = pos_rotated + axis_point
+
+    new_orientation = rot.as_matrix() @ orientation
+    new_pose = pin.SE3(new_orientation, new_translation)
+    
+    return new_pose
+
+def compute_rotated_angle(handle_pose, T_w_e, axis_point, axis_direction):
+    pos_init = handle_pose.translation
+    pos_current = T_w_e.translation
+    axis_direction = axis_direction / np.linalg.norm(axis_direction)
+
+    v1 = pos_init - axis_point
+    v2 = pos_current - axis_point
+
+    v1_proj = v1 - np.dot(v1, axis_direction) * axis_direction
+    v2_proj = v2 - np.dot(v2, axis_direction) * axis_direction
+
+    v1_proj /= np.linalg.norm(v1_proj)
+    v2_proj /= np.linalg.norm(v2_proj)
+
+    cos_theta = np.clip(np.dot(v1_proj, v2_proj), -1.0, 1.0)
+    angle_rad = np.arccos(cos_theta)
+    angle_deg = np.rad2deg(angle_rad)
+
+    cross = np.cross(v1_proj, v2_proj)
+    if np.dot(cross, axis_direction) < 0:
+        angle_deg = -angle_deg
+
+    return angle_deg
+
 def move_u_ref(args: Namespace, robot: SingleArmInterface, Adaptive_controller, run=True):
     """
     move_u_ref
@@ -191,7 +232,10 @@ def move_u_ref(args: Namespace, robot: SingleArmInterface, Adaptive_controller, 
     come from moveL
     send a reference twist u_ref_w instead.
     """
-    controlLoop = partial(controlLoopClik_u_ref, robot, Adaptive_controller)
+    new_pose = rotate_point_and_orientation(robot.handle_pose, np.array([-2.0,-1.7,0.5]), np.array([0,0,1]), robot.angle_desired)
+    if args.visualizer:
+        robot.visualizer_manager.sendCommand({"Mgoal": new_pose})
+    controlLoop = partial(controlLoopClik_u_ref, robot, Adaptive_controller, new_pose)
     # we're not using any past data or logging, hence the empty arguments
     log_item = {
         "qs": np.zeros(robot.nq),
@@ -208,7 +252,7 @@ def move_u_ref(args: Namespace, robot: SingleArmInterface, Adaptive_controller, 
     else:
         return loop_manager
 
-def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, i, past_data):
+def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, new_pose, i, past_data): 
     breakFlag = False
     log_item = {}
     save_past_item = {}
@@ -224,24 +268,37 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, i, pas
     # u_ref_e = transform_velocity_to_e(robot)
     # print(u_ref_e)
     # err_vector = u_ref_e
-    v = -np.pi/40
-    R = 1
+    
+    angle_moved = compute_rotated_angle(robot.handle_pose, robot.T_w_e, axis_point = np.array([-2.0,-1.7,0.5]), axis_direction = np.array([0,0,1]))
+    K = (robot.angle_desired - angle_moved)
+    # if K < 1e-5:
+    #     Adaptive_controller.save_history_to_mat("log.mat")
+    #     breakFlag = True
+    
+    v_max = np.pi/40
+    # v = np.clip(K * v_max, -v_max, v_max)
+    v = v_max
+    robot.v_ee = v
+    R = 0.8
     mode = 1
     if mode == 1:
         # open a revolving door
-        err_vector = np.array([0, 0, v, -v/R, 0, 0])
+        err_vector = np.array([0, 0, -v, v/R, 0, 0])
     elif mode == 2:
         # open a revolving drawer
-        err_vector = np.array([0, 0, v, 0, -v/R, 0])
+        err_vector = np.array([0, 0, -v, 0, v/R, 0])
     elif mode == 3:
         # open a sliding door
-        err_vector = np.array([0, -v, 0, 0, 0, 0])
+        err_vector = np.array([0, v, 0, 0, 0, 0])
     elif mode == 4:
         # open a sliding drawer
-        err_vector = np.array([0, 0, v, 0, 0, 0])
+        err_vector = np.array([0, 0, -v, 0, 0, 0])
     elif mode == 5:
         # open a sliding drawer
         err_vector = np.array([0, 0, 0, 1, 0, 0])
+    x_h_oe = Adaptive_controller.get_x_h()
+    # Adaptive_controller.save_history_to_mat("log.mat")
+    # print(x_h_oe)
     # err_vector = robot.u_ref_w
     
     # J = pin.computeFrameJacobian(robot.model, robot.data, q, robot.ee_frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
@@ -257,6 +314,7 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, i, pas
     # v_x, v_y, omega, q_1, q_2, q_3, q_4, q_5, q_6,
     # qd = np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0])
     return breakFlag, save_past_item, log_item
+
 
 # TODO: implement
 def moveLFollowingLine(
