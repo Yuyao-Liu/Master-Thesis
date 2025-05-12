@@ -14,6 +14,8 @@ from functools import partial
 from collections import deque
 from argparse import Namespace
 
+from IPython import embed
+
 
 def CrocoBaseP2PMPCControlLoop(
     ocp: CrocoOCP,
@@ -29,11 +31,14 @@ def CrocoBaseP2PMPCControlLoop(
     """
     # set initial state from sensor
     x0 = np.concatenate([robot.q, robot.v])
+    # embed()
     ocp.warmstartAndReSolve(x0)
     xs = np.array(ocp.solver.xs)
     # NOTE: for some reason the first value is always some wild bs
-    vel_cmd = xs[1, robot.model.nq :]
-    return vel_cmd, {}, {}
+    v_cmd = xs[1, robot.model.nq :]
+    # NOTE: dirty hack to work if wholebody mode, don't ask
+    v_cmd[3:] = 0.0
+    return v_cmd, {}, {}
 
 
 def CrocoBaseP2PMPC(

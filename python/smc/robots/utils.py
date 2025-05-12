@@ -85,7 +85,7 @@ def getMinimalArgParser():
         type=str,
         help="gripper you're using (no gripper is the default)",
         default="none",
-        choices=["none", "robotiq", "onrobot"],
+        choices=["none", "robotiq", "onrobot", "rs485"],
     )
     # TODO: make controlloop manager run in a while True loop and remove this
     # ==> max-iterations actually needs to be an option. sometimes you want to simulate and exit

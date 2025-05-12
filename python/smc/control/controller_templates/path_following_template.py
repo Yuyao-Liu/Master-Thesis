@@ -52,7 +52,7 @@ def PathFollowingFromPlannerCtrllLoopTemplate(
             breakFlag = True
 
         if data == "done" or data is None:
-            robot.sendVelocityCommand(np.zeros(robot.model.nv))
+            robot.sendVelocityCommand(np.zeros(robot.nv))
             log_item["qs"] = robot.q
             log_item["dqs"] = robot.v
             return breakFlag, save_past_item, log_item

@@ -12,6 +12,7 @@ import pinocchio as pin
 from argparse import Namespace
 import numpy as np
 from importlib.util import find_spec
+
 if find_spec("rclpy"):
     from rclpy.time import Time
     from sensor_msgs.msg import JointState
@@ -102,9 +103,15 @@ class SimulatedMobileYuMiRobotManager(
             )
             # pin.RandomConfiguration does not work well for planar joint,
             # or at least i remember something along those lines being the case
-            self._q[0] = np.random.random()
-            self._q[1] = np.random.random()
-            theta = np.random.random() * 2 * np.pi - np.pi
+            # self._q[0] = np.random.random()
+            # self._q[1] = np.random.random()
+            # theta = np.random.random() * 2 * np.pi - np.pi
+            # self._q[2] = np.cos(theta)
+            # self._q[3] = np.sin(theta)
+
+            self._q[0] = np.random.random() * 0.0
+            self._q[1] = np.random.random() * 0.0
+            theta = np.random.random() * 0.0
             self._q[2] = np.cos(theta)
             self._q[3] = np.sin(theta)
 
@@ -112,6 +119,7 @@ class SimulatedMobileYuMiRobotManager(
 class RealMobileYumiRobotManager(AbstractMobileYuMiRobotManager):
     def __init__(self, args):
         super().__init__(args)
+        self._v_cmd = np.zeros(self.model.nv)
 
     # TODO: here assert you need to have ros2 installed to run on real heron
     # and then set all this bullshit here instead of elsewhere
@@ -120,33 +128,39 @@ class RealMobileYumiRobotManager(AbstractMobileYuMiRobotManager):
         print("set publisher_joints_cmd into RobotManager")
 
     def sendVelocityCommandToReal(self, v: np.ndarray):
-        #        qd_base = qd[:3]
-        #        qd_left = qd[3:10]
-        #        qd_right = qd[10:]
-        #        self.publisher_vel_base(qd_base)
-        #        self.publisher_vel_left(qd_left)
-        #        self.publisher_vel_right(qd_right)
-        empty_msg = JointState()
-        for i in range(29):
-            empty_msg.velocity.append(0.0)
-        msg = empty_msg
-        msg.header.stamp = Time().to_msg()
-        for i in range(3):
-            msg.velocity[i] = v[i]
-        for i in range(15, 29):
-            msg.velocity[i] = v[i - 12]
 
-        self.publisher_joints_cmd.publish(msg)
+        if self.args.unreal:
+            if any(np.isnan(v)):
+                v = np.zeros(self.model.nv)
+            self._v_cmd = v
+            # empty_msg = JointState()
+            # for i in range(29):
+            #    empty_msg.velocity.append(0.0)
+            # msg = empty_msg
+            # msg.header.stamp = Time().to_msg()
+            # for i in range(3):
+            #    msg.velocity[i] = v[i]
+            # for i in range(15, 29):
+            #    msg.velocity[i] = v[i - 12]
+            # if hasattr(self, "publisher_joints_cmd"):
+            #    self.publisher_joints_cmd.publish(msg)
 
-    # TODO: define set initial pose by reading it from the real robot (well, the appropriate ros2 topic in this case)
+        else:
+            self._v = v
+            self._v_cmd = v
+            # NOTE: we update joint angles here, and _updateQ does nothing (there is no communication)
+            self._q = pin.integrate(self.model, self._q, v * self._dt)
+
+    # NOTE: handled by a topic callback
     def _updateQ(self):
         pass
 
+    # NOTE: handled by a topic callback
     def _updateV(self):
         pass
 
     def stopRobot(self):
-        self.sendVelocityCommand(np.zeros(self.model.nv))
+        self.sendVelocityCommand(np.zeros(self.nv))
 
     def setFreedrive(self):
         pass
@@ -156,6 +170,21 @@ class RealMobileYumiRobotManager(AbstractMobileYuMiRobotManager):
 
     def connectToRobot(self):
         pass
+
+    def setInitialPose(self):
+        self._q = pin.randomConfiguration(
+            self.model, self.model.lowerPositionLimit, self.model.upperPositionLimit
+        )
+        # pin.RandomConfiguration does not work well for planar joint,
+        # or at least i remember something along those lines being the case
+        # self._q[0] = np.random.random() * 0.1
+        # self._q[1] = np.random.random() * 0.1
+        # theta = np.random.random() * 2 * np.pi - np.pi
+        self._q[0] = np.random.random() * 0.0
+        self._q[1] = np.random.random() * 0.0
+        theta = np.random.random() * 0.0
+        self._q[2] = np.cos(theta)
+        self._q[3] = np.sin(theta)
 
     # TODO: create simulated gripper class to support the move, open, close methods - it's a mess now
     # in simulation we can just set the values directly

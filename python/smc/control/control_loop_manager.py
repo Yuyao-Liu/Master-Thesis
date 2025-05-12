@@ -75,6 +75,7 @@ class ControlLoopManager:
         self.args: Namespace = args
         self.iter_n: int = 0
         self.past_data: dict[str, deque[np.ndarray]] = {}
+        self.current_iteration = 0
         # NOTE: viz update rate is a magic number that seems to work fine and i don't have
         # any plans to make it smarter
         if args.viz_update_rate < 0 and args.ctrl_freq > 0:
@@ -114,6 +115,7 @@ class ControlLoopManager:
         it's the controlLoop's responsibility to break if it achieved it's goals.
         this is done via the breakFlag
         """
+        self.current_iteration += 1
         # NOTE: all required pre-computations are handled here
         self.robot_manager._step()
         # TODO make the arguments to controlLoop kwargs or whatever
@@ -185,7 +187,9 @@ class ControlLoopManager:
 
     def run(self):
         self.final_iteration = 0
+        self.current_iteration = 0
         for i in range(self.max_iterations):
+            self.current_iteration = i
             start = time.time()
             breakFlag = self.run_one_iter(i)
 

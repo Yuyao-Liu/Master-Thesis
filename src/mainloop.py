@@ -137,11 +137,11 @@ if __name__ == "__main__":
         robot.visualizer_manager.sendCommand({"Mgoal": handle_pose})
         
     # time.sleep(5)
-    park_base(args, robot, (-1.2, -2.5, 0))
-    moveL_only_arm(args, robot, handle_pose)
+    park_base(args, robot, (-1.2, -2.5, 0), run=True)
+    moveL_only_arm(args, robot, handle_pose, run=True)
     print('moveL done')
     Adaptive_controller.update_time()
-    move_u_ref(args, robot, Adaptive_controller)
+    move_u_ref(args, robot, Adaptive_controller, run=True)
     robot.closeGripper()
     robot.openGripper()
     if args.real:

@@ -6,7 +6,9 @@ from smc.robots.interfaces.force_torque_sensor_interface import (
 from smc.robots.interfaces.mobile_base_interface import (
     get_mobile_base_model,
 )
-from smc.robots.interfaces.whole_body_single_arm_interface import SingleArmWholeBodyInterface
+from smc.robots.interfaces.whole_body_single_arm_interface import (
+    SingleArmWholeBodyInterface,
+)
 from smc.robots.implementations.ur5e import get_model
 from smc.robots.grippers.robotiq.robotiq_gripper import RobotiqGripper
 from smc.robots.grippers.rs485_robotiq.rs485_robotiq import RobotiqHand
@@ -38,6 +40,20 @@ class AbstractHeronRobotManager(
         # TODO: CHANGE THIS TO REAL VALUES
         self._MAX_ACCELERATION = 1.7  # const
         self._MAX_QD = 3.14  # const
+        self._comfy_configuration = np.array(
+            [
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                1.54027569e00,
+                -1.95702042e00,
+                1.46127540e00,
+                -1.07315435e00,
+                -1.61189968e00,
+                -1.65158907e-03,
+            ]
+        )
         super().__init__(args)
 
 

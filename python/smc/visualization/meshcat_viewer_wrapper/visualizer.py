@@ -42,8 +42,9 @@ class MeshcatVisualizer(PMV):
         # there will be times when i just want to drop in points
         # which will never be changed
         self.n_points = 0
-        self.n_path_points = 0
+        # self.n_path_points = 0
         self.add_path_points_set = set()
+        self.add_fixed_path_points_set = set()
         self.n_frame_path_points = 0
         self.add_frame_path_points_set = set()
         self.n_obstacles = 0
@@ -107,27 +108,33 @@ class MeshcatVisualizer(PMV):
         self.addSphere(point_name, radius, color)
         self.applyConfiguration(point_name, point)
         self.n_points += 1
-        
+
     def addPath(
         self, name, path: list[pin.SE3] | np.ndarray, radius=5e-3, color=[0, 0, 1, 0.8]
     ):
         # NOTE: there's too much of them so the visualization is slow
-        self.n_path_points = len(path) if len(path) < 5 else 5
+        # self.n_path_points = len(path) if len(path) < 5 else 5
         if name == "fixed_path":
             color = [1, 0, 0, 0.8]
+        path_viz = path.copy()
         if type(path) == np.ndarray:
             # complete the quartenion
+            # if path.shape[1] == 2:
             path_viz = np.hstack((path, np.zeros((len(path), 3))))
             path_viz = np.hstack((path_viz, np.ones((len(path), 1))))
-        else:
-            path_viz = path.copy()
         index_step = len(path_viz) // 5
         for i, point in enumerate(path_viz):
-            if (i % index_step != 0) and name != "fixed_path":
+            if (i % index_step != 0) and "fixed" not in name:
                 continue
-            if i not in self.add_path_points_set:
-                self.addSphere(f"world/path_{name}_point_{i}", radius, color)
-                self.add_path_points_set.add(i)
+            # TODO: refactor ugly bs with same code under different if
+            if name == "path":
+                if i not in self.add_path_points_set:
+                    self.addSphere(f"world/path_{name}_point_{i}", radius, color)
+                    self.add_path_points_set.add(i)
+            if name == "fixed_path":
+                if i not in self.add_fixed_path_points_set:
+                    self.addSphere(f"world/path_{name}_point_{i}", radius, color)
+                    self.add_path_points_set.add(i)
             self.applyConfiguration(f"world/path_{name}_point_{i}", point)
         # self.n_path_points = max(i, self.n_path_points)
 
@@ -135,7 +142,7 @@ class MeshcatVisualizer(PMV):
         self, name, path: list[pin.SE3], radius=5e-3, color=[1, 0, 0, 0.8]
     ):
         self.n_frame_path_points = len(path) if len(path) < 5 else 5
-        index_step = len(path) // 5
+        index_step = len(path) // 5 if len(path) > 5 else 1
         for i, point in enumerate(path):
             if (i % index_step != 0) and name != "fixed_frame_path":
                 continue

@@ -7,12 +7,19 @@ from smc.control.cartesian_space.cartesian_space_point_to_point import (
     park_base,
     move_u_ref
     )
+from smc.robots.abstract_robotmanager import AbstractRobotManager
+
+from smc.multiprocessing.smc_heron_node import get_args, SMCHeronNode
+from smc.robots.implementations.heron import RealHeronRobotManager
+
 import argparse
 import numpy as np
 import pinocchio as pin
 import time
 import scipy.io as sio
 import os
+import rclpy
+from rclpy.executors import MultiThreadedExecutor
 
 class Adaptive_controller_manager:
     def __init__(self, robot, alpha=1, beta=1, gamma=2000):
@@ -94,33 +101,15 @@ class Adaptive_controller_manager:
             "v_ref_history": np.array(self.v_ref_history)
         })
         print(f"Data are saved in {filename}")
-        
-def get_args() -> argparse.Namespace:
-    parser = getMinimalArgParser()
-    parser.description = "Run closed loop inverse kinematics \
-    of various kinds. Make sure you know what the goal is before you run!"
-    parser = getClikArgs(parser)
-    parser.add_argument(
-        "--randomly-generate-goal",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="if true, the target pose is randomly generated, if false you type it target translation in via text input",
-    )
-    args = parser.parse_args()
-    return args
+
 
 if __name__ == "__main__":
-    
-    args = get_args()
-    args.robot = "heron"
-    # args.robot = "ur5e"
-    robot = getRobotFromArgs(args)
-    args.ik_solver = "keep_distance_nullspace"
-    
-    args.real=False
-    args.visualizer=True
-    args.plotter = True
-    args.max_v_percentage=5
+    args = None
+    args_smc = get_args()
+    assert args_smc.robot == "heron"
+    robot = RealHeronRobotManager(args_smc)
+    robot._step()
+    modes_and_loops = []
     # robot='ur5e', mode='whole_body', real=False, robot_ip='192.168.1.102', ctrl_freq=500, visualizer=True, viz_update_rate=-1, plotter=True, gripper='none', max_iterations=100000, start_from_current_pose=False, acceleration=0.3, max_v_percentage=0.3, debug_prints=False, save_log=False, save_dir='./data', run_name='latest_run', index_runs=False, past_window_size=5, controller_speed_scaling=1.0, contact_detecting_force=2.8, minimum_detectable_force_norm=3.0, visualize_collision_approximation=False, goal_error=0.01, tikhonov_damp=0.001, ik_solver='dampedPseudoinverse', alpha=0.01, beta=0.01, kp=1.0, kv=0.001, z_only=False, max_init_clik_iterations=10000, max_running_clik_iterations=1000, viz_test_path=False, randomly_generate_goal=False
     Adaptive_controller = Adaptive_controller_manager(robot)
     # move to a proper position for initialization
@@ -133,22 +122,23 @@ if __name__ == "__main__":
     # Mgoal = getRandomlyGeneratedGoal(args)
     robot.handle_pose = handle_pose
     robot.angle_desired = 120
-    if args.visualizer:
-        robot.visualizer_manager.sendCommand({"Mgoal": handle_pose})
         
     # time.sleep(5)
-    park_base(args, robot, (-1.2, -2.5, 0))
-    moveL_only_arm(args, robot, handle_pose)
-    print('moveL done')
-    Adaptive_controller.update_time()
-    move_u_ref(args, robot, Adaptive_controller)
-    robot.closeGripper()
-    robot.openGripper()
-    if args.real:
-        robot.stopRobot()
+    mode_1 = AbstractRobotManager.control_mode.whole_body
+    park_base(args_smc, robot, (-1.2, -2.5, 0))
+    modes_and_loops.append((mode_1, park_base))
+    
+    mode_2 = AbstractRobotManager.control_mode.whole_body
+    moveL_only_arm(args_smc, robot, handle_pose)
+    modes_and_loops.append((mode_2, moveL_only_arm))
+    
+    mode_3 = AbstractRobotManager.control_mode.whole_body
+    move_u_ref(args_smc, robot, Adaptive_controller)
+    modes_and_loops.append((mode_3, move_u_ref))
+    
+    rclpy.init(args=args)
 
-    if args.visualizer:
-        robot.killManipulatorVisualizer()
-
-    if args.save_log:
-        robot._log_manager.saveLog()
+    executor = MultiThreadedExecutor()
+    node = SMCHeronNode(args_smc, robot, modes_and_loops)
+    executor.add_node(node)
+    executor.spin()

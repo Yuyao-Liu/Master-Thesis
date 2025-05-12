@@ -51,6 +51,8 @@ def CrocoBasePathFollowingMPCControlLoop(
         xs = np.array(ocp.solver.xs)
         v_cmd = xs[1, robot.model.nq :]
 
+    # NOTE: dirty hack for wholebody mode
+    # v_cmd[3:] = 0.0
     err_vector_base = np.linalg.norm(p - path_base[0][:2])  # z axis is irrelevant
     log_item = {}
     log_item["err_norm_base"] = np.linalg.norm(err_vector_base).reshape((1,))

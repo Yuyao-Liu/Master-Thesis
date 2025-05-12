@@ -55,7 +55,9 @@ def moveJControlLoop(
 # fix this by tuning or whatever else.
 # MOVEL works just fine, so apply whatever's missing for there here
 # and that's it.
-def moveJP(q_desired: np.ndarray, args: Namespace, robot: AbstractRobotManager) -> None:
+def moveJP(
+    q_desired: np.ndarray, args: Namespace, robot: AbstractRobotManager, run=True
+) -> ControlLoopManager | None:
     """
     moveJP
     ---------------
@@ -72,9 +74,10 @@ def moveJP(q_desired: np.ndarray, args: Namespace, robot: AbstractRobotManager) 
         "err_norm": np.zeros((1,)),
     }
     loop_manager = ControlLoopManager(robot, controlLoop, args, {}, log_item)
-    loop_manager.run()
-    if args.debug_prints:
-        print("MoveJP done: convergence achieved, reached destionation!")
+    if run:
+        loop_manager.run()
+    else:
+        return loop_manager
 
 
 def moveJPIControlLoop(

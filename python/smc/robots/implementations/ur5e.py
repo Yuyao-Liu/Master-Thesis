@@ -30,6 +30,16 @@ class AbstractUR5eRobotManager(ForceTorqueOnSingleArmWrist):
         self._ee_frame_id = self.model.getFrameId("tool0")
         self._MAX_ACCELERATION = 1.7  # const
         self._MAX_QD = 3.14  # const
+        self._comfy_configuration = np.array(
+            [
+                1.54027569e00,
+                -1.95702042e00,
+                1.46127540e00,
+                -1.07315435e00,
+                -1.61189968e00,
+                -1.65158907e-03,
+            ]
+        )
         super().__init__(args)
 
 

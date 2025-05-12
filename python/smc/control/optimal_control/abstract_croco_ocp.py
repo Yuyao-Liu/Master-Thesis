@@ -240,10 +240,11 @@ class CrocoOCP(abc.ABC):
         # solver = crocoddyl.SolverIpopt(problem)
         # TODO: select other solvers from arguments
         self.solver = crocoddyl.SolverBoxFDDP(self.problem)
-        if self.args.debug_prints:
-            self.solver.setCallbacks(
-                [crocoddyl.CallbackVerbose(), crocoddyl.CallbackLogger()]
-            )
+
+    #        if self.args.debug_prints:
+    #            self.solver.setCallbacks(
+    #                [crocoddyl.CallbackVerbose(), crocoddyl.CallbackLogger()]
+    #            )
 
     # NOTE: used by csqp
     def createMimSolver(self) -> None:
@@ -257,10 +258,11 @@ class CrocoOCP(abc.ABC):
         # solver = mim_solvers.SolverSQP(problem)
         # TODO: select other solvers from arguments
         self.solver = mim_solvers.SolverCSQP(self.problem)
-        if self.args.debug_prints:
-            self.solver.setCallbacks(
-                [mim_solvers.CallbackVerbose(), mim_solvers.CallbackLogger()]
-            )
+
+    #        if self.args.debug_prints:
+    #            self.solver.setCallbacks(
+    #                [mim_solvers.CallbackVerbose(), mim_solvers.CallbackLogger()]
+    #            )
 
     # this shouldn't really depend on x0 but i can't be bothered
     def solveInitialOCP(self, x0: np.ndarray):

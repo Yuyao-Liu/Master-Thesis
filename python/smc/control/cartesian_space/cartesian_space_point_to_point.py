@@ -130,7 +130,7 @@ def controlLoopClik_park(robot, clik_controller, target_pose, i, past_data):
     return breakFlag, save_past_item, log_item
 
 def park_base(
-    args: Namespace, robot: SingleArmInterface, target_pose: pin.SE3, run=True
+    args: Namespace, robot: SingleArmInterface, target_pose: pin.SE3, run=False
 ) -> None | ControlLoopManager:
     
     # assert type(T_w_goal) == pin.SE3
@@ -154,7 +154,7 @@ def park_base(
         return loop_manager
 
 def moveL_only_arm(
-    args: Namespace, robot: SingleArmInterface, T_w_goal: pin.SE3, run=True
+    args: Namespace, robot: SingleArmInterface, T_w_goal: pin.SE3, run=False
 ) -> None | ControlLoopManager:
     """
     moveL
@@ -225,7 +225,8 @@ def compute_rotated_angle(handle_pose, T_w_e, axis_point, axis_direction):
 
     return angle_deg
 
-def move_u_ref(args: Namespace, robot: SingleArmInterface, Adaptive_controller, run=True):
+def move_u_ref(args: Namespace, robot: SingleArmInterface, Adaptive_controller, run=False):
+    Adaptive_controller.update_time()
     """
     move_u_ref
     -----
@@ -289,7 +290,7 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, new_po
         err_vector = np.array([0, 0, -v, 0, v/R, 0])
     elif mode == 3:
         # open a sliding door
-        err_vector = np.array([0, v, 0, 0, 0, 0])
+        err_vector = np.array([0, 0.5*v, 0, 0, 0, 0])
     elif mode == 4:
         # open a sliding drawer
         err_vector = np.array([0, 0, -v, 0, 0, 0])

@@ -2,7 +2,9 @@ import pinocchio as pin
 import numpy as np
 
 
-def path2D_to_SE3(path2D: np.ndarray, path_height: float) -> list[pin.SE3]:
+def path2D_to_SE3(
+    path2D: np.ndarray, path_height: float, rot_x: float
+) -> list[pin.SE3]:
     """
     path2D_SE3
     ----------
@@ -23,8 +25,8 @@ def path2D_to_SE3(path2D: np.ndarray, path_height: float) -> list[pin.SE3]:
     y_diff = y_i_plus_1 - y_i
     # elementwise arctan2
     # should be y first, then x
-    # thetas = np.arctan2(y_diff, x_diff)
-    thetas = np.arctan2(x_diff, y_diff)
+    thetas = np.arctan2(y_diff, x_diff)
+    # thetas = np.arctan2(x_diff, y_diff)
 
     ######################################
     #  construct SE3 from SE2 reference  #
@@ -35,13 +37,23 @@ def path2D_to_SE3(path2D: np.ndarray, path_height: float) -> list[pin.SE3]:
     for i in range(len(path2D) - 1):
         # first set the x axis to be in the theta direction
         # TODO: make sure this one makes sense
-        rotation = np.array(
-            [
-                [np.cos(thetas[i]), np.sin(thetas[i]), 0.0],
-                [np.sin(thetas[i]), -np.cos(thetas[i]), 0.0],
-                [0.0, 0.0, -1.0],
-            ]
-        )
+        # rotation = np.array(
+        #    [
+        #        [np.cos(thetas[i]), np.sin(thetas[i]), 0.0],
+        #        [np.sin(thetas[i]), -np.cos(thetas[i]), 0.0],
+        #        [0.0, 0.0, -1.0],
+        #    ]
+        # )
+        # rotation = np.array(
+        #    [
+        #        [np.cos(thetas[i]), -np.sin(thetas[i]), 0.0],
+        #        [np.sin(thetas[i]), np.cos(thetas[i]), 0.0],
+        #        [0.0, 0.0, 1.0],
+        #    ]
+        # )
+        rotation = pin.rpy.rpyToMatrix(0.0, 0.0, thetas[i])
+        rot_mat_x = pin.rpy.rpyToMatrix(rot_x, 0.0, 0.0)
+        rotation = rotation @ rot_mat_x
         # rotation = pin.rpy.rpyToMatrix(0.0, 0.0, thetas[i])
         # rotation = pin.rpy.rpyToMatrix(np.pi / 2, np.pi / 2, 0.0) @ rotation
         translation = np.array([path2D[i][0], path2D[i][1], path_height])

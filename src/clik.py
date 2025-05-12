@@ -584,7 +584,7 @@ def controlLoopClik_u_ref(robot: RobotManager, Adaptive_controller, clik_control
     # err_vector = u_ref_e
     v = -np.pi/40
     R = 1
-    mode = 1
+    mode = 4
     if mode == 1:
         # open a revolving door
         err_vector = np.array([0, 0, v, -v/R, 0, 0])
@@ -599,7 +599,7 @@ def controlLoopClik_u_ref(robot: RobotManager, Adaptive_controller, clik_control
         err_vector = np.array([0, 0, v, 0, 0, 0])
 
     # err_vector = robot.u_ref_w
-    
+
     # J = pin.computeFrameJacobian(robot.model, robot.data, q, robot.ee_frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
     J = pin.computeFrameJacobian(robot.model, robot.data, q, robot.ee_frame_id, pin.ReferenceFrame.LOCAL)
     # print(J)
@@ -616,7 +616,7 @@ def controlLoopClik_u_ref(robot: RobotManager, Adaptive_controller, clik_control
         qd = keep_distance_nullspace(1e-3, q, J, err_vector, robot)
     else:
         qd = clik_controller(J, err_vector)
-            
+    
     qd = np.insert(qd, 1, 0)
     # v_x, v_y, omega, q_1, q_2, q_3, q_4, q_5, q_6,
     # qd = np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0])

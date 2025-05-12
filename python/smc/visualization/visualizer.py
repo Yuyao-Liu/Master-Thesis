@@ -24,6 +24,7 @@ def manipulatorVisualizer(
     viz = MeshcatVisualizer(
         model=model, collision_model=collision_model, visual_model=visual_model
     )
+
     viz.loadViewerModel()
     # display the initial pose
     viz.display(cmd["q"])
@@ -69,15 +70,13 @@ def manipulatorVisualizer(
                 if key == "obstacle_box":
                     # stupid and evil but there is no time
                     viz.addBoxObstacle(cmd["obstacle_box"][0], cmd["obstacle_box"][1])
-                if key == "path":
+                if "path" in key:
                     # stupid and evil but there is no time
-                    viz.addPath("path", cmd["path"])
-                if key == "fixed_path":
-                    # stupid and evil but there is no time
-                    viz.addPath("fixed_path", cmd["fixed_path"])
-                if key == "frame_path":
-                    # stupid and evil but there is no time
-                    viz.addFramePath("", cmd["frame_path"])
+                    if not "frame" in key:
+                        viz.addPath(key, cmd[key])
+                    else:
+                        # stupid and evil but there is no time
+                        viz.addFramePath(key, cmd[key])
 
     except KeyboardInterrupt:
         if args.debug_prints:

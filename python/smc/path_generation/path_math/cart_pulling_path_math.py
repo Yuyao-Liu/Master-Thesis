@@ -123,5 +123,5 @@ def construct_EE_path(
     )
 
     # step (4)
-    ee_SE3trajectory = path2D_to_SE3(ee_2Dtrajectory, args.handlebar_height)
+    ee_SE3trajectory = path2D_to_SE3(ee_2Dtrajectory, args.handlebar_height, np.pi)
     return ee_SE3trajectory

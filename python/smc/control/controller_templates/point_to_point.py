@@ -14,6 +14,7 @@ from smc.robots.interfaces.whole_body_dual_arm_interface import (
 from smc.robots.interfaces.whole_body_single_arm_interface import (
     SingleArmWholeBodyInterface,
 )
+
 global control_loop_return
 control_loop_return = tuple[bool, dict[str, np.ndarray], dict[str, np.ndarray]]
 
@@ -103,9 +104,9 @@ def EEP2PCtrlLoopTemplate(
     if err_vector_norm < robot.args.goal_error:
         breakFlag = True
     log_item["qs"] = robot.q
-    log_item["err_norm"] = err_vector_norm.reshape((1,))
     log_item["dqs"] = robot.v
-    log_item["dqs_cmd"] = v_cmd.reshape((robot.nv,))
+    log_item["dqs_cmd"] = v_cmd
+    log_item["err_norm"] = err_vector_norm.reshape((1,))
     return breakFlag, save_past_item, log_item
 
 

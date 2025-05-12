@@ -62,7 +62,9 @@ def getDMPArgs(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
 
 
 class DMP:
-    def __init__(self, trajectory: str | np.ndarray, k=100, d=20, a_s:float=1.0, n_bfs=100):
+    def __init__(
+        self, trajectory: str | np.ndarray, k=100, d=20, a_s: float = 1.0, n_bfs=100
+    ):
         # TODO load the trajectory here
         # and then allocate all these with zeros of appopriate length
         # as this way they're basically declared twice
@@ -342,7 +344,7 @@ def controlLoopDMP(
 
     vel_cmd = dmp.vel + args.kp * (dmp.pos - q.reshape((-1, 1)))
 
-    robot.sendVelocityCommand(vel_cmd)
+    robot.sendVelocityCommand(vel_cmd.flatten())
 
     if (np.linalg.norm(dmp.vel) < 0.01) and (i > int(dmp.tau0 * 500)):
         breakFlag = True

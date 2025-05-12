@@ -313,7 +313,8 @@ class AbstractRobotManager(abc.ABC):
                     "you didn't select a gripper (no gripper is the default parameter) so no gripping for you"
                 )
             return
-        if (not self.args.simulation) and (not self.args.pinocchio_only):
+        # if (not self.args.simulation) and (not self.args.pinocchio_only):
+        if self.args.real:
             self.gripper.open()
         else:
             print("not implemented yet, so nothing is going to happen!")
@@ -326,15 +327,12 @@ class AbstractRobotManager(abc.ABC):
                     "you didn't select a gripper (no gripper is the default parameter) so no gripping for you"
                 )
             return
-        if (not self.args.simulation) and (not self.args.pinocchio_only):
+        if self.args.real:
             self.gripper.close()
         else:
             print("not implemented yet, so nothing is going to happen!")
 
-
-    def getJacobian(self) -> np.ndarray:
-        ...
-
+    def getJacobian(self) -> np.ndarray: ...
 
     ########################################################################################
     # visualizer management. ideally transferred elsewhere

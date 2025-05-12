@@ -166,14 +166,13 @@ class DualArmWholeBodyInterface(DualArmInterface, MobileBaseInterface):
         if self._mode == self.control_mode.left_arm_only:
             return J_left_with_base[:, 3:]
 
-        # NOTE: the base jacobian can be extracted from either left or right frame -
-        # since it's a body jacobian both have to be the same at the base.
-        # for efficiency of course it would be best to construct it in place,
-        # but who cares if it runs on time either way.
+        # NOTE: for some reason this is necessary as the J_left_with_base does not produce what i want
+        # ALSO, the assumption is that the error is given in the body frame (like all others)
         if self._mode == self.control_mode.base_only:
             J_base = np.zeros((6, 3))
-            J_base[:2, :2] = self.T_w_b.rotation[:2, :2]
-            J_base[5, 2] = 1
+            J_base[0, 0] = 1.0
+            J_base[1, 1] = 1.0
+            J_base[5, 2] = 1.0
             return J_base
             # return J_left_with_base[:, :3]
 
