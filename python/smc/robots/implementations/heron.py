@@ -104,16 +104,17 @@ class SimulatedHeronRobotManager(
 
 class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager):
     def __init__(self, args):
+        super().__init__(args)
         if args.debug_prints:
             print("RealHeronRobotManager init")
         self._speed_slider = 1.0  # const
         self._rtde_control: RTDEControlInterface
         self._rtde_receive: RTDEReceiveInterface
         self._rtde_io: RTDEIOInterface
-        raise NotImplementedError
+        self._v_cmd = np.zeros(self.model.nv)
+        # raise NotImplementedError
         # TODO: instantiate topics for reading base position /ekf_something
         # TODO: instantiate topics for sending base velocity commands /cmd_vel
-        super().__init__(args)
 
     def connectToGripper(self):
         if (self.args.gripper == "none") or not self.args.real:
@@ -158,7 +159,7 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
         self.wrench_offset = self.calibrateFT(self._dt)
         # TODO:: instantiate topic for reading base position,
         # i.e. the localization topic
-        raise NotImplementedError
+        # raise NotImplementedError
 
     def setSpeedSlider(self, value):
         """
@@ -173,15 +174,9 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
             self._rtde_io.setSpeedSlider(value)
         self.speed_slider = value
 
+    # NOTE: handled by a topic callback
     def _updateQ(self):
-        q = self._rtde_receive.getActualQ()
-        self._q[4:] = np.array(q)
-        # TODO: read position from localization topic,
-        # put that into _q
-        # HAS TO BE [x, y, cos(theta), sin(theta)] due to pinocchio's
-        # representation of planar joint state,
-        # and in the first 4 value of _q
-        raise NotImplementedError
+        pass
 
     def _updateV(self):
         v = self._rtde_receive.getActualQd()
@@ -209,9 +204,9 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
     def zeroFtSensor(self):
         self._rtde_control.zeroFtSensor()
 
-    def sendVelocityCommandToReal(self, v):
+    def sendVelocityCommand(self, v):
         # speedj(qd, scalar_lead_axis_acc, hangup_time_on_command)
-        self._rtde_control.speedJ(v[3:], self._acceleration, self._dt)
+        self._v_cmd = v
         # TODO: send the velocity command to the base by publishing to the
         # /vel_cmd topic
         # NOTE: look at sendVelocityCommand in RobotManager,
@@ -234,7 +229,8 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
         self._rtde_control.freedriveMode()
         time.sleep(0.5)
         self._rtde_control.endFreedriveMode()
-        raise NotImplementedError
+        self.robot._v_cmd[:] = 0.0
+        # raise NotImplementedError
         # TODO: we need to stop be the base as well.
         # option 1) send zero velocity commands.
         # but then make sure that it doesn't keep going forward

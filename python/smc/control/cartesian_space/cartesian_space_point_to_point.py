@@ -276,12 +276,12 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, new_po
     #     Adaptive_controller.save_history_to_mat("log.mat")
     #     breakFlag = True
     
-    v_max = np.pi/40
+    v_max = np.pi/40 * 0.25
     # v = np.clip(K * v_max, -v_max, v_max)
     v = v_max
     robot.v_ee = v
-    R = 0.8
-    mode = 1
+    R = 0.5
+    mode = robot.task
     if mode == 1:
         # open a revolving door
         err_vector = np.array([0, 0, -v, v/R, 0, 0])
@@ -290,7 +290,7 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, new_po
         err_vector = np.array([0, 0, -v, 0, v/R, 0])
     elif mode == 3:
         # open a sliding door
-        err_vector = np.array([0, 0.5*v, 0, 0, 0, 0])
+        err_vector = np.array([0, v, 0, 0, 0, 0])
     elif mode == 4:
         # open a sliding drawer
         err_vector = np.array([0, 0, -v, 0, 0, 0])

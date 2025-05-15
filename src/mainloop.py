@@ -15,23 +15,23 @@ import scipy.io as sio
 import os
 
 class Adaptive_controller_manager:
-    def __init__(self, robot, alpha=1, beta=1, gamma=2000):
+    def __init__(self, robot, alpha=1, beta=1, gamma=10000):
         self.robot = robot
         self.robot.v_ee = 0
         # hyper-parameters
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
-        self.gain_matrix = np.eye(3)*2000
+        self.gain_matrix = np.eye(3)*10000
         # target
         self.f_d = np.zeros(3)
         self.v_d = np.pi/40
         # initalize parameter
         self.err_sum = np.zeros(3)
-        self.x_h = np.array([1, -2, 3])
+        self.x_h = np.array([1.3, -0.1, 0.1])
         self.v_f = np.zeros(3)
         self.v_ref = np.array([1, 0, 0])
-        self.k_h = np.array([3, -1, 2])
+        self.k_h = np.array([0.1, 1.2, 0.1])
         self.time = time.perf_counter()
         self.starttime = time.perf_counter()
         self.x_h_history = []
@@ -69,10 +69,14 @@ class Adaptive_controller_manager:
         self.time = time.perf_counter()
         
         T_w_e = self.robot.T_w_e
-        self.v_ref = -T_w_e.rotation[:, 2] * abs(self.robot.v_ee)
-        vf = self.v_ref
-        self.v_ref_history.append((-T_w_e.rotation[:, 2]).copy())
-        
+        if robot.task == 3:
+            self.v_ref = -T_w_e.rotation[:, 1] * abs(self.robot.v_ee)
+            self.v_ref_history.append((-T_w_e.rotation[:, 1]).copy())
+        else:
+            self.v_ref = -T_w_e.rotation[:, 2] * abs(self.robot.v_ee)
+            self.v_ref_history.append((-T_w_e.rotation[:, 2]).copy())
+            
+        vf = self.v_ref   
         v_ref_norm = np.sign(np.dot(self.x_h.T, self.v_ref)) * np.linalg.norm(vf)
 
         k_dot = self.gain_matrix @ np.cross(self.x_h, vf)
@@ -135,7 +139,7 @@ if __name__ == "__main__":
     robot.angle_desired = 120
     if args.visualizer:
         robot.visualizer_manager.sendCommand({"Mgoal": handle_pose})
-        
+    robot.task = 2
     # time.sleep(5)
     park_base(args, robot, (-1.2, -2.5, 0), run=True)
     moveL_only_arm(args, robot, handle_pose, run=True)

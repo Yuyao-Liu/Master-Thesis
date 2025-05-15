@@ -1,4 +1,4 @@
-from smc.robots.implementations.mobile_yumi import RealMobileYumiRobotManager
+from smc.robots.implementations.heron import RealHeronRobotManager
 from smc.control.control_loop_manager import ControlLoopManager
 from smc import getMinimalArgParser
 from smc.robots.abstract_robotmanager import AbstractRobotManager
@@ -109,7 +109,7 @@ class SMCHeronNode(Node):
             tuple[AbstractRobotManager.control_mode, ControlLoopManager]
         ],
     ):
-        super().__init__("SMCMobileYuMiNode")
+        super().__init__("SMCHeronNode")
         if args.sim:
             self.set_parameters(
                 [
@@ -138,16 +138,13 @@ class SMCHeronNode(Node):
         # self._ns = get_rosified_name(self.get_namespace())
 
         self.get_logger().info(
-            f"### Starting smc mobile yumi node example under namespace {self._ns}"
+            f"### Starting smc heron node example under namespace {self._ns}"
         )
-
-        self.empty_msg = JointState()
-        for _ in range(29):
-            self.empty_msg.velocity.append(0.0)
 
         self._dt = 1 / self.args.ctrl_freq
 
         self._pub_timer = self.create_timer(self._dt, self.send_cmd)
+        self._receive_arm_q_timer = self.create_timer(self._dt, self.receive_arm_q)
         self.current_iteration = 0
 
         ########################################################
@@ -165,14 +162,8 @@ class SMCHeronNode(Node):
             #    history = rclpy.qos.HistoryPolicy.KEEP_LAST,
             depth=1
         )
-        self.sub_joint_states = self.create_subscription(
-            JointState,
-            f"{self._ns}/platform/joint_states",
-            self.callback_arms_state,
-            qos_prof2,
-        )
-        self._cmd_pub = self.create_publisher(
-            JointState, f"{self._ns}/platform/joints_cmd", 1
+        self._cmd_vel_pub = self.create_publisher(
+            Twist, "/cmd_vel", 1
         )
         # self.get_logger().info(f"{self._ns}/platform/joints_cmd")
         # self.robot.set_publisher_joints_cmd(self._cmd_pub)
@@ -212,8 +203,8 @@ class SMCHeronNode(Node):
         # self.get_logger().info("current iteration: " + str(self.current_iteration))
         # self.get_logger().info(str(self.robot._v_cmd))
         if self.args.unreal:
-            msg = self.empty_msg
-            msg.header.stamp = Time().to_msg()
+            twist_msg = Twist()
+            twist_msg.header.stamp = Time().to_msg()
 
             # TEST
             # msg.velocity[0] = (
@@ -232,16 +223,15 @@ class SMCHeronNode(Node):
             #    / 6
             # )
             # REAL
-            for i in range(3):
-                msg.velocity[i] = self.robot._v_cmd[i]
-                if self.robot._v_cmd[2] < 0.01:
-                    self.robot._v_cmd[2] = 0.0
-                    # self.get_logger().info("this velocity is too small for anything!!")
-            for i in range(15, 29):
-                msg.velocity[i] = self.robot._v_cmd[i - 12]
+            twist_msg.linear.x = self.robot._v_cmd[0] 
+            twist_msg.linear.y = self.robot._v_cmd[1] 
+            twist_msg.angular.z = self.robot._v_cmd[2]
             # self.get_logger().info(str(self.robot._q))
-            self._cmd_pub.publish(msg)
-
+            ## TODO slower
+            self._cmd_vel_pub.publish(twist_msg)
+            # send v_cmd to ur5e
+            self._rtde_control.speedJ(self.robot._v_cmd[3:], self._acceleration, self._dt)
+            
     def callback_base_odom(self, msg: Odometry):
         # self.robot._v[0] = msg.twist.twist.linear.x
         # self.robot._v[1] = msg.twist.twist.linear.y
@@ -297,10 +287,9 @@ class SMCHeronNode(Node):
         # self.get_logger().info(str(self.robot._q[:4]))
         # self.get_logger().info(str(self.init_odom))
 
-    def callback_arms_state(self, msg: JointState):
-        if self.current_iteration < 200 or self.args.unreal:
-            self.robot._q[-14:-7] = msg.position[-14:-7]
-            self.robot._q[-7:] = msg.position[-7:]
+    def receive_arm_q(self):
+        q = self.robot._rtde_receive.getActualQ()
+        self.robot._q[5:] = np.array(q)
 
     def wait_for_sim_time(self):
         """Wait for the /clock topic to start publishing."""
