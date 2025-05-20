@@ -9,8 +9,8 @@ from smc.control.cartesian_space.cartesian_space_point_to_point import (
     )
 from smc.robots.abstract_robotmanager import AbstractRobotManager
 
-from smc.multiprocessing.smc_heron_node import get_args, SMCHeronNode
-from smc.robots.implementations.heron import RealHeronRobotManager
+from smc.multiprocessing.smc_heron_node import get_args, SMCHeronNode, GazeboSMCHeronNode
+from smc.robots.implementations.heron import RealHeronRobotManager, GazeboHeronRobotManager
 
 import argparse
 import numpy as np
@@ -106,14 +106,27 @@ class Adaptive_controller_manager:
 if __name__ == "__main__":
     args = None
     args_smc = get_args()
-    assert args_smc.robot == "heron"
-    robot = RealHeronRobotManager(args_smc)
+    args_smc.robot = "heron"
+    args_smc.ik_solver = "keep_distance_nullspace"
+    args_smc.real=False
+    args_smc.unreal = True
+    args_smc.visualizer=True
+    args_smc.plotter = False
+    args_smc.gazebo = True
+    args_smc.max_v_percentage = 0.1
+    # args_smc.max_v_percentage=5
+    # assert args_smc.robot == "heron"
+    # robot = RealHeronRobotManager(args_smc)
+    if args_smc.gazebo:
+        robot = GazeboHeronRobotManager(args_smc)
+    else:
+        robot = RealHeronRobotManager(args_smc) 
     robot._step()
     modes_and_loops = []
     # robot='ur5e', mode='whole_body', real=False, robot_ip='192.168.1.102', ctrl_freq=500, visualizer=True, viz_update_rate=-1, plotter=True, gripper='none', max_iterations=100000, start_from_current_pose=False, acceleration=0.3, max_v_percentage=0.3, debug_prints=False, save_log=False, save_dir='./data', run_name='latest_run', index_runs=False, past_window_size=5, controller_speed_scaling=1.0, contact_detecting_force=2.8, minimum_detectable_force_norm=3.0, visualize_collision_approximation=False, goal_error=0.01, tikhonov_damp=0.001, ik_solver='dampedPseudoinverse', alpha=0.01, beta=0.01, kp=1.0, kv=0.001, z_only=False, max_init_clik_iterations=10000, max_running_clik_iterations=1000, viz_test_path=False, randomly_generate_goal=False
     Adaptive_controller = Adaptive_controller_manager(robot)
     # move to a proper position for initialization
-    translation = np.array([-2.0,-2.5,0.5])
+    translation = np.array([-2.0,-2.5,1.3])
     # translation = np.array([-0.0,-0.5,0.5])
     theta = np.radians(90)
     # rotation = np.array([[np.cos(theta), -np.sin(theta), 0], [-np.sin(theta), -np.cos(theta), 0], [0, 0, -1]])
@@ -122,23 +135,28 @@ if __name__ == "__main__":
     # Mgoal = getRandomlyGeneratedGoal(args)
     robot.handle_pose = handle_pose
     robot.angle_desired = 120
-        
+    if args_smc.visualizer:
+        robot.visualizer_manager.sendCommand({"Mgoal": handle_pose})
+    robot.task = 1   
     # time.sleep(5)
     mode_1 = AbstractRobotManager.control_mode.whole_body
-    park_base(args_smc, robot, (-1.2, -2.5, 0))
-    modes_and_loops.append((mode_1, park_base))
+    loop_1 = park_base(args_smc, robot, (-1.2, -2.5, 0))
+    modes_and_loops.append((mode_1, loop_1))
     
     mode_2 = AbstractRobotManager.control_mode.whole_body
-    moveL_only_arm(args_smc, robot, handle_pose)
-    modes_and_loops.append((mode_2, moveL_only_arm))
+    loop_2 = moveL_only_arm(args_smc, robot, handle_pose)
+    modes_and_loops.append((mode_2, loop_2))
     
     mode_3 = AbstractRobotManager.control_mode.whole_body
-    move_u_ref(args_smc, robot, Adaptive_controller)
-    modes_and_loops.append((mode_3, move_u_ref))
+    loop_3 = move_u_ref(args_smc, robot, Adaptive_controller)
+    modes_and_loops.append((mode_3, loop_3))
     
     rclpy.init(args=args)
 
     executor = MultiThreadedExecutor()
-    node = SMCHeronNode(args_smc, robot, modes_and_loops)
+    if args_smc.gazebo:
+        node = GazeboSMCHeronNode(args_smc, robot, modes_and_loops)
+    else:
+        node = SMCHeronNode(args_smc, robot, modes_and_loops)
     executor.add_node(node)
     executor.spin()

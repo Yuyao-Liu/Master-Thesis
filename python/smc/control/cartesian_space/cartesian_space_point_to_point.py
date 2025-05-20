@@ -17,7 +17,7 @@ from collections import deque
 from typing import Callable
 from scipy.spatial.transform import Rotation as R
 from smc.control.cartesian_space.ik_solvers import QPManipMax
-
+import time
 
 def controlLoopClik(
     #                       J           err_vec     v_cmd
@@ -113,7 +113,10 @@ def controlLoopClik_park(robot, clik_controller, target_pose, i, past_data):
     log_item = {}
     save_past_item = {}
     q = robot.q
+    # print(q)
     v_cmd = clik_controller(q, target_pose)
+    # v_cmd = np.zeros(robot.nv)
+    # v_cmd[2]=1
     if np.linalg.norm(np.array(target_pose)-[q[0], q[1], np.arctan2(q[3], q[2])]) < robot.args.goal_error:
         breakFlag = True
     robot.sendVelocityCommand(v_cmd)
@@ -132,7 +135,7 @@ def controlLoopClik_park(robot, clik_controller, target_pose, i, past_data):
 def park_base(
     args: Namespace, robot: SingleArmInterface, target_pose: pin.SE3, run=False
 ) -> None | ControlLoopManager:
-    
+    time.sleep(5)
     # assert type(T_w_goal) == pin.SE3
     controlLoop = partial(controlLoopClik_park, robot, parking_base, target_pose)
     # we're not using any past data or logging, hence the empty arguments
@@ -276,11 +279,11 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, new_po
     #     Adaptive_controller.save_history_to_mat("log.mat")
     #     breakFlag = True
     
-    v_max = np.pi/40 * 0.25
+    v_max = np.pi/40
     # v = np.clip(K * v_max, -v_max, v_max)
     v = v_max
     robot.v_ee = v
-    R = 0.5
+    R = 0.8
     mode = robot.task
     if mode == 1:
         # open a revolving door

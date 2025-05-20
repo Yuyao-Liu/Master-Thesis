@@ -123,12 +123,12 @@ if __name__ == "__main__":
     
     args.real=False
     args.visualizer=True
-    args.plotter = True
+    args.plotter = False
     args.max_v_percentage=5
     # robot='ur5e', mode='whole_body', real=False, robot_ip='192.168.1.102', ctrl_freq=500, visualizer=True, viz_update_rate=-1, plotter=True, gripper='none', max_iterations=100000, start_from_current_pose=False, acceleration=0.3, max_v_percentage=0.3, debug_prints=False, save_log=False, save_dir='./data', run_name='latest_run', index_runs=False, past_window_size=5, controller_speed_scaling=1.0, contact_detecting_force=2.8, minimum_detectable_force_norm=3.0, visualize_collision_approximation=False, goal_error=0.01, tikhonov_damp=0.001, ik_solver='dampedPseudoinverse', alpha=0.01, beta=0.01, kp=1.0, kv=0.001, z_only=False, max_init_clik_iterations=10000, max_running_clik_iterations=1000, viz_test_path=False, randomly_generate_goal=False
     Adaptive_controller = Adaptive_controller_manager(robot)
     # move to a proper position for initialization
-    translation = np.array([-2.0,-2.5,0.5])
+    translation = np.array([-2.0,-2.5,1.3])
     # translation = np.array([-0.0,-0.5,0.5])
     theta = np.radians(90)
     # rotation = np.array([[np.cos(theta), -np.sin(theta), 0], [-np.sin(theta), -np.cos(theta), 0], [0, 0, -1]])
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     robot.angle_desired = 120
     if args.visualizer:
         robot.visualizer_manager.sendCommand({"Mgoal": handle_pose})
-    robot.task = 2
+    robot.task = 1
     # time.sleep(5)
     park_base(args, robot, (-1.2, -2.5, 0), run=True)
     moveL_only_arm(args, robot, handle_pose, run=True)
