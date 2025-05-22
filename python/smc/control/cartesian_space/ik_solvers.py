@@ -1,5 +1,6 @@
 from typing import Callable
 import numpy as np
+import pinocchio as pin
 from qpsolvers import solve_qp
 
 # TODO: if importlib.files ... to make it an optional import
@@ -142,7 +143,7 @@ def parking_base(q, target_pose):
 
     # Extract robot's current pose
     x_r, y_r, theta_r = (q[0], q[1], np.arctan2(q[3], q[2]))  
-    x_t, y_t, theta_t = target_pose  
+    x_t, y_t, theta_t = (target_pose[0] ,target_pose[1] ,target_pose[2])  
 
     # Compute the relative position between robot and target
     dx = x_r - x_t
@@ -175,7 +176,6 @@ def parking_base(q, target_pose):
     qd = np.array([v, 0, omega, 0, 0, 0, 0, 0, 0])
     return qd
 
-
 def dampedPseudoinverse(
     tikhonov_damp: float, J: np.ndarray, err_vector: np.ndarray
 ) -> np.ndarray:
@@ -186,12 +186,10 @@ def dampedPseudoinverse(
     )
     return qd
 
-
 def jacobianTranspose(J: np.ndarray, err_vector: np.ndarray) -> np.ndarray:
     qd = J.T @ err_vector
     return qd
 
-import pinocchio as pin
 def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
     J = np.delete(J, 1, axis=1)
     # q = add_bias_and_noise(q)
@@ -215,11 +213,11 @@ def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
     qd_task = J_pseudo @ err_vector
 
     ### compute q_null ###
-    d_target = 0.6  # Minimum allowed EE-base distance
+    d_target = robot.base2ee # Minimum allowed EE-base distance
     dx = x_ee - x_base
     dy = y_ee - y_base
     d_current = np.hypot(dx, dy)
-    # print(d_current)
+    print(d_current)
     I = np.eye(J.shape[1])
     N = I - J_pseudo @ J
     
@@ -275,16 +273,13 @@ def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
     theta = angle_between_vectors(dir_vee, dir_base)
     # theta = angle_between_vectors(dir_e_z, dir_base)
     z2[1] = 2 * (theta)
-    # z2[2] = -z2[1]
+    # z2[2] = -0.5 * z2[1]
     # print(z2[1])
-    if d_current < 0.62:
-        qd_null = N @ (z1 + z2)
-        # qd_null = N @ z2
-    else:
-        qd_null = N @ z2
     qd_null = N @ (z1 + z2)
+    # qd_null = N @ (z1)
     # Combine primary task velocity and null space velocity
     qd = np.insert(qd_task + qd_null, 1, 0)
+    # qd = np.insert(qd_task, 1, 0)
     return qd
 
 # TODO: put something into q of the QP
@@ -361,7 +356,6 @@ def QPquadprog(
     qd = solve_qp(P, q, G, h, A, b, lb, ub, solver="quadprog", verbose=False)
     # qd = solve_qp(P, q, G, h, A, b, lb, ub, solver="proxqp")
     return qd
-
 
 def QPproxsuite(
     qp: proxqp.dense.QP,

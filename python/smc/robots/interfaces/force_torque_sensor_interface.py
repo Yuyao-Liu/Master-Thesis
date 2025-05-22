@@ -87,7 +87,8 @@ class ForceTorqueSensorInterface(abc.ABC):
         # because the robot needs to stop for the zeroing to make sense,
         # this is the responsibility of the user!!!
         self.zeroFtSensor()
-        for _ in range(2000):
+        ###for _ in range(2000):
+        for _ in range(200):
             start = time.time()
             # ft = self._updateWrench()
             self._updateWrench()

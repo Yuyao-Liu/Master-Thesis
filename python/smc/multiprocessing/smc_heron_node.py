@@ -15,7 +15,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from smc.control.cartesian_space import getClikArgs
 from smc.control.optimal_control.util import get_OCP_args
 # from smc.path_generation.planner import getPlanningArgs
-
+import time
 import numpy as np
 import argparse
 import pinocchio as pin
@@ -164,7 +164,7 @@ class SMCHeronNode(Node):
             depth=1
         )
         self._cmd_vel_pub = self.create_publisher(
-            Twist, "/cmd_vel", 1
+            Twist, "/mir/cmd_vel", 1
         )
         # self.get_logger().info(f"{self._ns}/platform/joints_cmd")
         # self.robot.set_publisher_joints_cmd(self._cmd_pub)
@@ -173,12 +173,12 @@ class SMCHeronNode(Node):
                 Odometry, f"{self._ns}/platform/odometry", self.callback_base_odom, 1
             )
         if self.args.robot == "heron":
-            self.get_logger().info(
-                    "ub_base_odom" 
-                )
             self.sub_base_odom = self.create_subscription(
-                Odometry, f"/odom", self.callback_base_odom, 1
+                Odometry, f"/mir/odom", self.callback_base_odom, 1
             )
+            self.get_logger().info(
+                    "subscription for odom created" 
+                )
         self.odom_initialized = False
         self.init_odom = np.zeros(3)
 
@@ -196,6 +196,7 @@ class SMCHeronNode(Node):
         breakFlag = self.loop_manager.run_one_iter(self.loop_manager.current_iteration)
         if breakFlag:
             if len(self.modes_and_loops) > 0:
+                time.sleep(2)
                 mode, self.loop_manager = self.modes_and_loops.pop(0)
                 self.robot.mode = mode
                 self.get_logger().info(
@@ -203,17 +204,20 @@ class SMCHeronNode(Node):
                 )
             else:
                 self.robot._v_cmd[:] = 0.0
+                self.get_logger().info(
+                    "Task finished! Set v_cmd = 0")
+                self.robot.stopRobot()
 
         if not self.odom_initialized:
             self.get_logger().info(
-                "odom not initialized, hence not publishing anything!"
+                "odom intialized, hence not publishing anything!"
             )
 
         # self.get_logger().info("current iteration: " + str(self.current_iteration))
         # self.get_logger().info(str(self.robot._v_cmd))
-        if self.args.unreal:
+        if not np.isnan(self.robot._v_cmd).any():
             twist_msg = Twist()
-            twist_msg.header.stamp = Time().to_msg()
+            # twist_msg.header.stamp = Time().to_msg()
 
             # TEST
             # msg.velocity[0] = (
@@ -231,15 +235,21 @@ class SMCHeronNode(Node):
             #    )
             #    / 6
             # )
+            
             # REAL
             twist_msg.linear.x = self.robot._v_cmd[0] 
             twist_msg.linear.y = self.robot._v_cmd[1] 
             twist_msg.angular.z = self.robot._v_cmd[2]
+            # twist_msg.angular.z = 0.1
+            
             # self.get_logger().info(str(self.robot._q))
             ## TODO slower
             self._cmd_vel_pub.publish(twist_msg)
             # send v_cmd to ur5e
-            self._rtde_control.speedJ(self.robot._v_cmd[3:], self._acceleration, self._dt)
+            # self.get_logger().info(
+            #     str(self.robot._v_cmd)
+            # )
+            self.robot._rtde_control.speedJ(self.robot._v_cmd[3:], self.robot._acceleration, self.robot._dt)
             
     def callback_base_odom(self, msg: Odometry):
         # self.robot._v[0] = msg.twist.twist.linear.x
@@ -248,22 +258,29 @@ class SMCHeronNode(Node):
         ## (they could be defined some other way or theta could be offset of something)
         # self.robot._v[2] = msg.twist.twist.angular.z
         # self.robot._v[3] = 0  # for consistency
-        costh2 = msg.pose.pose.orientation.w
-        sinth2 = np.linalg.norm(
-            [
-                msg.pose.pose.orientation.x,
-                msg.pose.pose.orientation.y,
-                msg.pose.pose.orientation.z,
-            ]
-        )
-        th = 2 * np.arctan2(sinth2, costh2)
+        
+        # Marko's original code, there is something wrong
+        # costh2 = msg.pose.pose.orientation.w
+        # sinth2 = np.linalg.norm(
+        #     [
+        #         msg.pose.pose.orientation.x,
+        #         msg.pose.pose.orientation.y,
+        #         msg.pose.pose.orientation.z,
+        #     ]
+        # )
+        # th = 2 * np.arctan2(sinth2, costh2)
+        
+        # My version
+        q = msg.pose.pose.orientation
+        th = -2 * np.arctan2(q.z, q.w)
+        
         if not self.odom_initialized:
             self.init_odom[0] = msg.pose.pose.position.x
             self.init_odom[1] = msg.pose.pose.position.y
             self.init_odom[2] = th
             self.odom_initialized = True
             self.get_logger().info(str(self.init_odom))
-        if (self.args.unreal and self.odom_initialized) or self.current_iteration < 50:
+        if (self.odom_initialized) or self.current_iteration < 50:
             T_odom = np.zeros((3, 3))
             T_odom[0, 0] = np.cos(self.init_odom[2])
             T_odom[0, 1] = -1 * np.sin(self.init_odom[2])
@@ -298,7 +315,7 @@ class SMCHeronNode(Node):
 
     def receive_arm_q(self):
         q = self.robot._rtde_receive.getActualQ()
-        self.robot._q[5:] = np.array(q)
+        self.robot._q[4:] = np.array(q)
 
     def wait_for_sim_time(self):
         """Wait for the /clock topic to start publishing."""
@@ -412,7 +429,9 @@ class GazeboSMCHeronNode(Node):
                 )
             else:
                 self.robot._v_cmd[:] = 0.0
-
+                self.get_logger().info(
+            "Task finished! Set v_cmd = 0"
+        )
         if not self.odom_initialized:
             self.get_logger().info(
                 "odom not initialized, hence not publishing anything!"

@@ -160,7 +160,7 @@ def get_mobile_base_model(underactuated: bool) -> tuple[pin.Model, pin.GeometryM
     model_mobile_base.appendBodyToJoint(
         MOBILE_BASE_JOINT_ID, body_inertia, pin.SE3.Identity()
     )
-    box_shape = fcl.Box(0.5, 0.3, 0.872)
+    box_shape = fcl.Box(0.8, 0.5, 0.872)
     body_placement = pin.SE3.Identity()
     body_placement.translation[2] += 0.436
     geometry_mobile_base = pin.GeometryObject(

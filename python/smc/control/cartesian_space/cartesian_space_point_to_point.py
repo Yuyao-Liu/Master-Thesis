@@ -115,9 +115,11 @@ def controlLoopClik_park(robot, clik_controller, target_pose, i, past_data):
     q = robot.q
     # print(q)
     v_cmd = clik_controller(q, target_pose)
+    # v_cmd = np.array([0,0,0.1,0,0,0,0,0,0])
     # v_cmd = np.zeros(robot.nv)
     # v_cmd[2]=1
-    if np.linalg.norm(np.array(target_pose)-[q[0], q[1], np.arctan2(q[3], q[2])]) < robot.args.goal_error:
+    current_error = np.linalg.norm(target_pose-[q[0], q[1], np.arctan2(q[3], q[2])])
+    if current_error < robot.args.goal_error:
         breakFlag = True
     robot.sendVelocityCommand(v_cmd)
 
@@ -133,7 +135,7 @@ def controlLoopClik_park(robot, clik_controller, target_pose, i, past_data):
     return breakFlag, save_past_item, log_item
 
 def park_base(
-    args: Namespace, robot: SingleArmInterface, target_pose: pin.SE3, run=False
+    args: Namespace, robot: SingleArmInterface, target_pose, run=False
 ) -> None | ControlLoopManager:
     time.sleep(5)
     # assert type(T_w_goal) == pin.SE3
@@ -290,16 +292,13 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, new_po
         err_vector = np.array([0, 0, -v, v/R, 0, 0])
     elif mode == 2:
         # open a revolving drawer
-        err_vector = np.array([0, 0, -v, 0, v/R, 0])
+        err_vector = np.array([0, 0, -v, 0, -v/R, 0])
     elif mode == 3:
         # open a sliding door
         err_vector = np.array([0, v, 0, 0, 0, 0])
     elif mode == 4:
         # open a sliding drawer
         err_vector = np.array([0, 0, -v, 0, 0, 0])
-    elif mode == 5:
-        # open a sliding drawer
-        err_vector = np.array([0, 0, 0, 1, 0, 0])
     x_h_oe = Adaptive_controller.get_x_h()
     # Adaptive_controller.save_history_to_mat("log.mat")
     # print(x_h_oe)
@@ -318,184 +317,3 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, new_po
     # v_x, v_y, omega, q_1, q_2, q_3, q_4, q_5, q_6,
     # qd = np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0])
     return breakFlag, save_past_item, log_item
-
-
-# TODO: implement
-def moveLFollowingLine(
-    args: Namespace, robot, goal_point: pin.SE3
-) -> tuple[bool, dict[str, np.ndarray], dict[str, np.ndarray]]:
-    """
-    moveLFollowingLine
-    ------------------
-    make a path from current to goal position, i.e.
-    just a straight line between them.
-    the question is what to do with orientations.
-    i suppose it makes sense to have one function that enforces/assumes
-    that the start and end positions have the same orientation.
-    then another version goes in a line and linearly updates the orientation
-    as it goes
-    """
-    ...
-
-
-def moveUntilContactControlLoop(
-    args: Namespace,
-    robot: ForceTorqueOnSingleArmWrist,
-    speed: np.ndarray,
-    #                       J           err_vec     v_cmd
-    ik_solver: Callable[[np.ndarray, np.ndarray], np.ndarray],
-    i: int,
-    past_data: dict[str, deque[np.ndarray]],
-) -> tuple[bool, dict[str, np.ndarray], dict[str, np.ndarray]]:
-    """
-    moveUntilContactControlLoop
-    ---------------
-    generic control loop for clik (handling error to final point etc).
-    in some version of the universe this could be extended to a generic
-    point-to-point motion control loop.
-    """
-    breakFlag = False
-    # know where you are, i.e. do forward kinematics
-    log_item = {}
-    q = robot.q
-    # break if wrench is nonzero basically
-    # wrench = robot.getWrench()
-    # you're already giving the speed in the EE i.e. body frame
-    # so it only makes sense to have the wrench in the same frame
-    # wrench = robot._getWrenchInEE()
-    wrench = robot.wrench
-    # and furthermore it's a reasonable assumption that you'll hit the thing
-    # in the direction you're going in.
-    # thus we only care about wrenches in those direction coordinates
-    mask = speed != 0.0
-    # NOTE: contact getting force is a magic number
-    # it is a 100% empirical, with the goal being that it's just above noise.
-    # so far it's worked fine, and it's pretty soft too.
-    if np.linalg.norm(wrench[mask]) > args.contact_detecting_force:
-        print("hit with", np.linalg.norm(wrench[mask]))
-        breakFlag = True
-        robot.sendVelocityCommand(np.zeros(robot.nv))
-    if (not args.real) and (i > 500):
-        print("let's say you hit something lule")
-        breakFlag = True
-    # pin.computeJointJacobian is much different than the C++ version lel
-    J = robot.getJacobian()
-    # compute the joint velocities.
-    qd = ik_solver(J, speed)
-    robot.sendVelocityCommand(qd)
-    log_item["qs"] = q.reshape((robot.nq,))
-    log_item["wrench"] = wrench.reshape((6,))
-    return breakFlag, {}, log_item
-
-
-def moveUntilContact(
-    args: Namespace, robot: ForceTorqueOnSingleArmWrist, speed: np.ndarray
-) -> None:
-    """
-    moveUntilContact
-    -----
-    does clik until it feels something with the f/t sensor
-    """
-    assert type(speed) == np.ndarray
-    ik_solver = getIKSolver(args, robot)
-    controlLoop = partial(moveUntilContactControlLoop, args, robot, speed, ik_solver)
-    # we're not using any past data or logging, hence the empty arguments
-    log_item = {"wrench": np.zeros(6)}
-    log_item["qs"] = np.zeros((robot.nq,))
-    loop_manager = ControlLoopManager(robot, controlLoop, args, {}, log_item)
-    loop_manager.run()
-    print("Collision detected!!")
-
-
-def controlLoopClikDualArm(
-    #                       J           err_vec     v_cmd
-    ik_solver: Callable[[np.ndarray, np.ndarray], np.ndarray],
-    T_w_absgoal: pin.SE3,
-    T_absgoal_l: pin.SE3,
-    T_absgoal_r: pin.SE3,
-    args: Namespace,
-    robot: DualArmInterface,
-    t: int,
-    past_data: dict[str, deque[np.ndarray]],
-) -> tuple[np.ndarray, dict[str, np.ndarray], dict[str, np.ndarray]]:
-    """
-    controlLoopClikDualArm
-    ---------------
-    do point to point motion for each arm and its goal.
-    that goal is generated from a single goal that you pass,
-    and an SE3  transformation on the goal for each arm
-    """
-
-    T_w_lgoal = T_absgoal_l.act(T_w_absgoal)
-    T_w_rgoal = T_absgoal_r.act(T_w_absgoal)
-
-    SEerror_left = robot.T_w_l.actInv(T_w_lgoal)
-    SEerror_right = robot.T_w_r.actInv(T_w_rgoal)
-
-    err_vector_left = pin.log6(SEerror_left).vector
-    err_vector_right = pin.log6(SEerror_right).vector
-
-    err_vector = np.concatenate((err_vector_left, err_vector_right))
-    J = robot.getJacobian()
-
-    if args.ik_solver == "QPManipMax":
-        v_cmd = QPManipMax(
-            J,
-            err_vector,
-            robot.computeManipulabilityIndexQDerivative(),
-            lb=-1 * robot.max_v,
-            ub=robot.max_v,
-        )
-    else:
-        v_cmd = ik_solver(J, err_vector)
-    if v_cmd is None:
-        print(
-            t,
-            "the controller you chose produced None as output, using dampedPseudoinverse instead",
-        )
-        v_cmd = dampedPseudoinverse(1e-2, J, err_vector)
-    else:
-        if args.debug_prints:
-            print(t, "ik solver success")
-    return v_cmd, {}, {}
-
-
-def moveLDualArm(
-    args: Namespace,
-    robot: DualArmInterface,
-    T_w_goal: pin.SE3,
-    T_abs_l: pin.SE3,
-    T_abs_r: pin.SE3,
-    run=True,
-) -> None | ControlLoopManager:
-    """
-    moveLDualArm
-    -----------
-    """
-    ik_solver = getIKSolver(args, robot)
-    controlLoop = partial(
-        DualEEP2PCtrlLoopTemplate,
-        ik_solver,
-        T_w_goal,
-        T_abs_l,
-        T_abs_r,
-        controlLoopClikDualArm,
-        args,
-        robot,
-    )
-    # we're not using any past data or logging, hence the empty arguments
-    log_item = {
-        "qs": np.zeros(robot.nq),
-        "dqs": np.zeros(robot.nv),
-        "dqs_cmd": np.zeros(robot.nv),
-        "l_err_norm": np.zeros(1),
-        "r_err_norm": np.zeros(1),
-    }
-    save_past_dict = {}
-    loop_manager = ControlLoopManager(
-        robot, controlLoop, args, save_past_dict, log_item
-    )
-    if run:
-        loop_manager.run()
-    else:
-        return loop_manager

@@ -104,13 +104,18 @@ class SimulatedHeronRobotManager(
 
 class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager):
     def __init__(self, args):
-        super().__init__(args)
         if args.debug_prints:
             print("RealHeronRobotManager init")
         self._speed_slider = 1.0  # const
         self._rtde_control: RTDEControlInterface
         self._rtde_receive: RTDEReceiveInterface
         self._rtde_io: RTDEIOInterface
+        self._wrench_base: np.ndarray = np.zeros(6)
+        self._wrench: np.ndarray = np.zeros(6)
+        # NOTE: wrench bias will be defined in the frame your sensor's gives readings
+        self._wrench_bias: np.ndarray = np.zeros(6)
+        self._T_w_e = pin.SE3.Identity()
+        super().__init__(args)
         self._v_cmd = np.zeros(self.model.nv)
         # raise NotImplementedError
         # TODO: instantiate topics for reading base position /ekf_something
@@ -152,11 +157,11 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
         self._rtde_control = RTDEControlInterface(self.args.robot_ip)
         self._rtde_receive = RTDEReceiveInterface(self.args.robot_ip)
         self._rtde_io = RTDEIOInterface(self.args.robot_ip)
-        self._rtde_io.setSpeedSlider(self.args.speed_slider)
+        # self._rtde_io.setSpeedSlider(self.args.speed_slider)
         # NOTE: the force/torque sensor just has large offsets for no reason,
         # and you need to minus them to have usable readings.
         # we provide this with calibrateFT
-        self.wrench_offset = self.calibrateFT(self._dt)
+        self.calibrateFT(self._dt)
         # TODO:: instantiate topic for reading base position,
         # i.e. the localization topic
         # raise NotImplementedError
@@ -205,8 +210,17 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
         self._rtde_control.zeroFtSensor()
 
     def sendVelocityCommand(self, v):
+        # print(self.T_w_e)
+        # print("send v_cmd")
         # speedj(qd, scalar_lead_axis_acc, hangup_time_on_command)
-        self._v_cmd = v
+        assert type(v) == np.ndarray
+        assert len(v) == self.model.nv
+        # v_cmd_to_real = np.clip(v, -1 * self._max_v, self._max_v)
+        non_zero_mask = self._max_v != 0
+        K = max(np.abs(v[non_zero_mask]) / np.abs(self._max_v[non_zero_mask]))
+        v = v / max(1.0, K)
+        v_cmd_to_real = np.clip(v, -1 * self._max_v, self._max_v)
+        self._v_cmd = v_cmd_to_real
         # TODO: send the velocity command to the base by publishing to the
         # /vel_cmd topic
         # NOTE: look at sendVelocityCommand in RobotManager,
@@ -279,7 +293,13 @@ class GazeboHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManage
         # put that into _q
         # HAS TO BE [x, y, cos(theta), sin(theta)] due to pinocchio's
         # representation of planar joint state
-        self._q = np.zeros(self.nq)
+        self._q = pin.randomConfiguration(
+                self.model, self.model.lowerPositionLimit, self.model.upperPositionLimit
+            )
+        self._q[0] = 0
+        self._q[1] = 0
+        self._q[2] = 1
+        self._q[3] = 0
 
     def connectToRobot(self):
         pass
@@ -308,7 +328,15 @@ class GazeboHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManage
 
     def sendVelocityCommand(self, v):
         # speedj(qd, scalar_lead_axis_acc, hangup_time_on_command)
-        self._v_cmd = v
+        assert type(v) == np.ndarray
+        assert len(v) == self.model.nv
+        # v_cmd_to_real = np.clip(v, -1 * self._max_v, self._max_v)
+        # print(self._max_v)
+        non_zero_mask = self._max_v != 0
+        K = max(np.abs(v[non_zero_mask]) / np.abs(self._max_v[non_zero_mask]))
+        v = v / max(1.0, K)
+        v_cmd_to_real = np.clip(v, -1 * self._max_v, self._max_v)
+        self._v_cmd = v_cmd_to_real
         # TODO: send the velocity command to the base by publishing to the
         # /vel_cmd topic
         # NOTE: look at sendVelocityCommand in RobotManager,
