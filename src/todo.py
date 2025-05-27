@@ -111,7 +111,7 @@ if __name__ == "__main__":
     # check parking_lot before set it to True
     real = True
     # 1: open a revolving door 2: revolving drawer 3: sliding door 4/5: sliding drawer
-    task = 2
+    task = 1
     if real:  
         args_smc.real=True
         args_smc.unreal = False

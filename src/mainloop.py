@@ -137,6 +137,7 @@ if __name__ == "__main__":
     # Mgoal = getRandomlyGeneratedGoal(args)
     robot.handle_pose = handle_pose
     robot.angle_desired = 120
+    robot.base2ee = 0.75
     if args.visualizer:
         robot.visualizer_manager.sendCommand({"Mgoal": handle_pose})
     robot.task = 1

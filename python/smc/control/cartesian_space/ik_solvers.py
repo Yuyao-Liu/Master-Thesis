@@ -224,8 +224,10 @@ def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
     Jx = J[0, :]
     Jy = J[1, :]
     Jbx = np.zeros_like(Jx)
-    Jbx[0] = 1
-    Jd = (dx * (Jx - Jbx) + dy * Jy)/d_current
+    Jbx[0] = q[2]
+    Jby = np.zeros_like(Jx)
+    Jby[0] = q[3]
+    Jd = (dx * (Jx - Jbx) + dy * (Jy - Jby))/d_current
     # z1 = -5 * Jd.T * np.sign(d_current - d_target)
     z1 = -20 * Jd.T * (d_current - d_target)
     # print(Jx,Jy)

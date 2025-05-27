@@ -118,7 +118,7 @@ def controlLoopClik_park(robot, clik_controller, target_pose, i, past_data):
     # v_cmd = np.array([0,0,0.1,0,0,0,0,0,0])
     # v_cmd = np.zeros(robot.nv)
     # v_cmd[2]=1
-    current_error = np.linalg.norm(target_pose-[q[0], q[1], np.arctan2(q[3], q[2])])
+    current_error = np.linalg.norm(target_pose-np.array([q[0], q[1], np.arctan2(q[3], q[2])]))
     if current_error < robot.args.goal_error:
         breakFlag = True
     robot.sendVelocityCommand(v_cmd)
