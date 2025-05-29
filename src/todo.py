@@ -109,25 +109,26 @@ if __name__ == "__main__":
     args_smc.robot = "heron"
     args_smc.ik_solver = "keep_distance_nullspace"
     # check parking_lot before set it to True
-    real = True
+    real = False
     # 1: open a revolving door 2: revolving drawer 3: sliding door 4/5: sliding drawer
-    task = 1
+    task = 3
     if real:  
         args_smc.real=True
         args_smc.unreal = False
         args_smc.gazebo = False
         args_smc.sim = False
+        args_smc.max_v_percentage = 0.2
     else:
         args_smc.sim = True
         args_smc.real=False
         args_smc.unreal = True
         args_smc.gazebo = True
+        args_smc.max_v_percentage = 0.5
     args_smc.robot_ip = "192.168.04"
     # args_smc.robot_ip = "192.168.03"
     args_smc.goal_error = 0.05
     args_smc.visualizer=True
     args_smc.plotter = False
-    args_smc.max_v_percentage = 0.2
     # args_smc.max_v_percentage=5
     # assert args_smc.robot == "heron"
     # robot = RealHeronRobotManager(args_smc)
@@ -144,7 +145,7 @@ if __name__ == "__main__":
     # define the parking space for mir(x,y,theta)
     if task == 3:
     # for silding door
-        parking_lot = np.array([-1, -1.15, np.pi/4])
+        parking_lot = np.array([-1, -1.15, np.pi/2])
     else:
         parking_lot = np.array([-1.5, -1.15, 0])
     # parking_lot = np.array([0, 0, 0])
@@ -166,9 +167,7 @@ if __name__ == "__main__":
     pre_handle_pose = pin.SE3(rotation, translation)
     # Mgoal = getRandomlyGeneratedGoal(args)
     robot.handle_pose = handle_pose
-    robot.angle_desired = 120
-    if args_smc.visualizer:
-        robot.visualizer_manager.sendCommand({"Mgoal": handle_pose})
+    robot.angle_desired = -45
     robot.task = task  
     # time.sleep(5)
     mode_1 = AbstractRobotManager.control_mode.whole_body

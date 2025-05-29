@@ -195,15 +195,14 @@ class SMCHeronNode(Node):
         self.current_iteration += 1
         breakFlag = self.loop_manager.run_one_iter(self.loop_manager.current_iteration)
         if breakFlag:
+            self.robot._v_cmd[:] = 0.0
             if len(self.modes_and_loops) > 0:
-                time.sleep(2)
                 mode, self.loop_manager = self.modes_and_loops.pop(0)
                 self.robot.mode = mode
                 self.get_logger().info(
                     "about to run: " + str(self.loop_manager.controlLoop.func.__name__)
                 )
-            else:
-                self.robot._v_cmd[:] = 0.0
+            else:     
                 self.get_logger().info(
                     "Task finished! Set v_cmd = 0")
                 self.robot.stopRobot()

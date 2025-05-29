@@ -18,7 +18,11 @@ from typing import Callable
 from scipy.spatial.transform import Rotation as R
 from smc.control.cartesian_space.ik_solvers import QPManipMax
 import time
+from scipy.io import savemat
 
+q_park = []
+q_u_ref = []
+T_w_e_u_ref = []
 def controlLoopClik(
     #                       J           err_vec     v_cmd
     ik_solver: Callable[[np.ndarray, np.ndarray], np.ndarray],
@@ -109,10 +113,12 @@ def controlLoopClik_only_arm(
     return v_cmd, {}, {}
 
 def controlLoopClik_park(robot, clik_controller, target_pose, i, past_data):
+    global q_park
     breakFlag = False
     log_item = {}
     save_past_item = {}
     q = robot.q
+    q_park.append(q.copy())
     # print(q)
     v_cmd = clik_controller(q, target_pose)
     # v_cmd = np.array([0,0,0.1,0,0,0,0,0,0])
@@ -121,6 +127,8 @@ def controlLoopClik_park(robot, clik_controller, target_pose, i, past_data):
     current_error = np.linalg.norm(target_pose-np.array([q[0], q[1], np.arctan2(q[3], q[2])]))
     if current_error < robot.args.goal_error:
         breakFlag = True
+        savemat("q_park.mat", {"q_park": np.array(q_park)})
+        print("q_park saved")
     robot.sendVelocityCommand(v_cmd)
 
     log_item = {
@@ -168,6 +176,7 @@ def moveL_only_arm(
     send a SE3 object as goal point.
     if you don't care about rotation, make it np.zeros((3,3))
     """
+    time.sleep(2)
     assert type(T_w_goal) == pin.SE3
     ik_solver = getIKSolver(args, robot)
     controlLoop = partial(
@@ -231,6 +240,7 @@ def compute_rotated_angle(handle_pose, T_w_e, axis_point, axis_direction):
     return angle_deg
 
 def move_u_ref(args: Namespace, robot: SingleArmInterface, Adaptive_controller, run=False):
+    time.sleep(2)
     Adaptive_controller.update_time()
     """
     move_u_ref
@@ -238,9 +248,9 @@ def move_u_ref(args: Namespace, robot: SingleArmInterface, Adaptive_controller, 
     come from moveL
     send a reference twist u_ref_w instead.
     """
-    new_pose = rotate_point_and_orientation(robot.handle_pose, np.array([-2.0,-1.7,0.5]), np.array([0,0,1]), robot.angle_desired)
-    if args.visualizer:
-        robot.visualizer_manager.sendCommand({"Mgoal": new_pose})
+    new_pose = rotate_point_and_orientation(robot.handle_pose, np.array([-2.3, -0.65-0.8, 1]), np.array([0,0,1]), robot.angle_desired)
+    # if args.visualizer:
+    #     robot.visualizer_manager.sendCommand({"Mgoal": new_pose})
     controlLoop = partial(controlLoopClik_u_ref, robot, Adaptive_controller, new_pose)
     # we're not using any past data or logging, hence the empty arguments
     log_item = {
@@ -259,10 +269,15 @@ def move_u_ref(args: Namespace, robot: SingleArmInterface, Adaptive_controller, 
         return loop_manager
 
 def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, new_pose, i, past_data): 
+    global q_u_ref
+    global T_w_e_u_ref
     breakFlag = False
     log_item = {}
     save_past_item = {}
     q = robot.q
+    T_w_e = robot.T_w_e.translation
+    T_w_e_u_ref.append(T_w_e.copy())
+    q_u_ref.append(q.copy())
     # x, y, z, omega, q_1, q_2, q_3, q_4, q_5, q_6, g_1, g_2
     # print(q)
     # TODO set a proper omega
@@ -275,11 +290,15 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, new_po
     # print(u_ref_e)
     # err_vector = u_ref_e
     
-    angle_moved = compute_rotated_angle(robot.handle_pose, robot.T_w_e, axis_point = np.array([-2.0,-1.7,0.5]), axis_direction = np.array([0,0,1]))
-    K = (robot.angle_desired - angle_moved)
-    # if K < 1e-5:
-    #     Adaptive_controller.save_history_to_mat("log.mat")
-    #     breakFlag = True
+    angle_moved = compute_rotated_angle(robot.handle_pose, robot.T_w_e, axis_point = np.array([-2.3, -0.65-0.8, 1]), axis_direction = np.array([0,0,1]))
+    # print(angle_moved)
+    # K = abs(angle_moved)
+    if abs(angle_moved) > 75:
+        # Adaptive_controller.save_history_to_mat("log.mat")
+        breakFlag = True
+        savemat("q_u_ref.mat", {"q_u_ref": np.array(q_u_ref)})
+        savemat("T_w_e_u_ref.mat", {"T_w_e_u_ref": np.array(T_w_e_u_ref)})
+        print("q_u_ref and T_w_e_u_ref saved")
     
     v_max = np.pi/40
     # v = np.clip(K * v_max, -v_max, v_max)

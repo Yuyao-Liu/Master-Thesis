@@ -217,7 +217,7 @@ def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
     dx = x_ee - x_base
     dy = y_ee - y_base
     d_current = np.hypot(dx, dy)
-    print(d_current)
+    # print(d_current)
     I = np.eye(J.shape[1])
     N = I - J_pseudo @ J
     
@@ -271,14 +271,14 @@ def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
         if angle < -np.pi/2:
             angle = angle + np.pi
         return angle
-    dir_e_z = np.array([T_w_e.rotation[0, 2], T_w_e.rotation[0, 1]])
+    # dir_e_z = np.array([T_w_e.rotation[0, 2], T_w_e.rotation[0, 1]])
     theta = angle_between_vectors(dir_vee, dir_base)
     # theta = angle_between_vectors(dir_e_z, dir_base)
     z2[1] = 2 * (theta)
     # z2[2] = -0.5 * z2[1]
     # print(z2[1])
     qd_null = N @ (z1 + z2)
-    # qd_null = N @ (z1)
+    # qd_null = N @ (z2)
     # Combine primary task velocity and null space velocity
     qd = np.insert(qd_task + qd_null, 1, 0)
     # qd = np.insert(qd_task, 1, 0)
