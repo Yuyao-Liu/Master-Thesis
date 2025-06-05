@@ -6,7 +6,9 @@ from smc.robots.interfaces.force_torque_sensor_interface import (
 from smc.robots.interfaces.mobile_base_interface import (
     get_mobile_base_model,
 )
-from smc.robots.interfaces.whole_body_single_arm_interface import SingleArmWholeBodyInterface
+from smc.robots.interfaces.whole_body_single_arm_interface import (
+    SingleArmWholeBodyInterface,
+)
 from smc.robots.implementations.ur5e import get_model
 from smc.robots.grippers.robotiq.robotiq_gripper import RobotiqGripper
 from smc.robots.grippers.rs485_robotiq.rs485_robotiq import RobotiqHand
@@ -38,6 +40,20 @@ class AbstractHeronRobotManager(
         # TODO: CHANGE THIS TO REAL VALUES
         self._MAX_ACCELERATION = 1.7  # const
         self._MAX_QD = 3.14  # const
+        self._comfy_configuration = np.array(
+            [
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                1.54027569e00,
+                -1.95702042e00,
+                1.46127540e00,
+                -1.07315435e00,
+                -1.61189968e00,
+                -1.65158907e-03,
+            ]
+        )
         super().__init__(args)
 
 
@@ -94,10 +110,16 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
         self._rtde_control: RTDEControlInterface
         self._rtde_receive: RTDEReceiveInterface
         self._rtde_io: RTDEIOInterface
-        raise NotImplementedError
+        self._wrench_base: np.ndarray = np.zeros(6)
+        self._wrench: np.ndarray = np.zeros(6)
+        # NOTE: wrench bias will be defined in the frame your sensor's gives readings
+        self._wrench_bias: np.ndarray = np.zeros(6)
+        self._T_w_e = pin.SE3.Identity()
+        super().__init__(args)
+        self._v_cmd = np.zeros(self.model.nv)
+        # raise NotImplementedError
         # TODO: instantiate topics for reading base position /ekf_something
         # TODO: instantiate topics for sending base velocity commands /cmd_vel
-        super().__init__(args)
 
     def connectToGripper(self):
         if (self.args.gripper == "none") or not self.args.real:
@@ -135,14 +157,14 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
         self._rtde_control = RTDEControlInterface(self.args.robot_ip)
         self._rtde_receive = RTDEReceiveInterface(self.args.robot_ip)
         self._rtde_io = RTDEIOInterface(self.args.robot_ip)
-        self._rtde_io.setSpeedSlider(self.args.speed_slider)
+        # self._rtde_io.setSpeedSlider(self.args.speed_slider)
         # NOTE: the force/torque sensor just has large offsets for no reason,
         # and you need to minus them to have usable readings.
         # we provide this with calibrateFT
-        self.wrench_offset = self.calibrateFT(self._dt)
+        self.calibrateFT(self._dt)
         # TODO:: instantiate topic for reading base position,
         # i.e. the localization topic
-        raise NotImplementedError
+        # raise NotImplementedError
 
     def setSpeedSlider(self, value):
         """
@@ -157,15 +179,9 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
             self._rtde_io.setSpeedSlider(value)
         self.speed_slider = value
 
+    # NOTE: handled by a topic callback
     def _updateQ(self):
-        q = self._rtde_receive.getActualQ()
-        self._q[4:] = np.array(q)
-        # TODO: read position from localization topic,
-        # put that into _q
-        # HAS TO BE [x, y, cos(theta), sin(theta)] due to pinocchio's
-        # representation of planar joint state,
-        # and in the first 4 value of _q
-        raise NotImplementedError
+        pass
 
     def _updateV(self):
         v = self._rtde_receive.getActualQd()
@@ -193,9 +209,18 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
     def zeroFtSensor(self):
         self._rtde_control.zeroFtSensor()
 
-    def sendVelocityCommandToReal(self, v):
+    def sendVelocityCommand(self, v):
+        # print(self.T_w_e)
+        # print("send v_cmd")
         # speedj(qd, scalar_lead_axis_acc, hangup_time_on_command)
-        self._rtde_control.speedJ(v[3:], self._acceleration, self._dt)
+        assert type(v) == np.ndarray
+        assert len(v) == self.model.nv
+        # v_cmd_to_real = np.clip(v, -1 * self._max_v, self._max_v)
+        non_zero_mask = self._max_v != 0
+        K = max(np.abs(v[non_zero_mask]) / np.abs(self._max_v[non_zero_mask]))
+        v = v / max(1.0, K)
+        v_cmd_to_real = np.clip(v, -1 * self._max_v, self._max_v)
+        self._v_cmd = v_cmd_to_real
         # TODO: send the velocity command to the base by publishing to the
         # /vel_cmd topic
         # NOTE: look at sendVelocityCommand in RobotManager,
@@ -208,7 +233,9 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
         # of qs and vs.
         # TODO: make sure that this function and they either work together,
         # or override again if they can't work toherther
-
+    def sendVelocityCommandToReal(self, v):
+        self.sendVelocityCommand(v)
+        
     def stopRobot(self):
         self._rtde_control.speedStop(1)
         print("sending a stopj as well")
@@ -218,7 +245,8 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
         self._rtde_control.freedriveMode()
         time.sleep(0.5)
         self._rtde_control.endFreedriveMode()
-        raise NotImplementedError
+        self._v_cmd[:] = 0.0
+        # raise NotImplementedError
         # TODO: we need to stop be the base as well.
         # option 1) send zero velocity commands.
         # but then make sure that it doesn't keep going forward
@@ -246,39 +274,106 @@ class RealHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager)
         # and just put the arm to freedrive mode
 
 
-# TODO: see if this is helpful for dealing with ros2 topics,
-# if not then delete
-"""
-    # TODO: here assert you need to have ros2 installed to run on real heron
-    # and then set all this bullshit here instead of elsewhere
-    def set_publisher_vel_base(self, publisher_vel_base):
-        self.publisher_vel_base = publisher_vel_base
-        print("set vel_base_publisher into robotmanager")
+class GazeboHeronRobotManager(AbstractHeronRobotManager, AbstractRealRobotManager):
+    def __init__(self, args):
+        super().__init__(args)
+        if args.debug_prints:
+            print("RealHeronRobotManager init")
+        self._speed_slider = 1.0  # const
+        self._v_cmd = np.zeros(self.model.nv)
+        # raise NotImplementedError
+        # TODO: instantiate topics for reading base position /ekf_something
+        # TODO: instantiate topics for sending base velocity commands /cmd_vel
 
-    def set_publisher_vel_left(self, publisher_vel_left):
-        self.publisher_vel_left = publisher_vel_left
-        print("set vel_left_publisher into robotmanager")
+    def connectToGripper(self):
+        pass
 
-    def set_publisher_vel_right(self, publisher_vel_right):
-        self.publisher_vel_right = publisher_vel_right
-        print("set vel_right_publisher into robotmanager")
+    def setInitialPose(self):
+        # TODO: read position from localization topic,
+        # put that into _q
+        # HAS TO BE [x, y, cos(theta), sin(theta)] due to pinocchio's
+        # representation of planar joint state
+        self._q = pin.randomConfiguration(
+                self.model, self.model.lowerPositionLimit, self.model.upperPositionLimit
+            )
+        self._q[0] = 0
+        self._q[1] = 0
+        self._q[2] = 1
+        self._q[3] = 0
+
+    def connectToRobot(self):
+        pass
+
+    def setSpeedSlider(self, value):
+        pass
+
+    # NOTE: handled by a topic callback
+    def _updateQ(self):
+        pass
+
+    def _updateV(self):
+        pass
+
+    def _updateWrench(self):
+        self._wrench_base = np.random.random(6)
+        # NOTE: create a robot_math module, make this mapping a function called
+        # mapse3ToDifferent frame or something like that
+        mapping = np.zeros((6, 6))
+        mapping[0:3, 0:3] = self._T_w_e.rotation
+        mapping[3:6, 3:6] = self._T_w_e.rotation
+        self._wrench = mapping.T @ self._wrench_base
+
+    def zeroFtSensor(self):
+        self._wrench_bias = np.zeros(6)
 
     def sendVelocityCommand(self, v):
-        v = super().sendVelocityCommand(v)
         # speedj(qd, scalar_lead_axis_acc, hangup_time_on_command)
-        self.rtde_control.speedJ(v[3:], self._acceleration, self._dt)
-        cmd_msg = msg.Twist()
-        cmd_msg.linear.x = v[0]
-        # already clipped away, but no cost in being more explicit
-        # about underactuation
-        cmd_msg.linear.y = 0.0
-        cmd_msg.angular.z = v[2]
-        self.publisher_vel_base.publish(cmd_msg)
-        # good to keep because updating is slow otherwise
-        # it's not correct, but it's more correct than not updating
-        # self.q = pin.integrate(self.model, self.q, qd * self.dt)
-"""
+        assert type(v) == np.ndarray
+        assert len(v) == self.model.nv
+        # v_cmd_to_real = np.clip(v, -1 * self._max_v, self._max_v)
+        # print(self._max_v)
+        non_zero_mask = self._max_v != 0
+        K = max(np.abs(v[non_zero_mask]) / np.abs(self._max_v[non_zero_mask]))
+        v = v / max(1.0, K)
+        v_cmd_to_real = np.clip(v, -1 * self._max_v, self._max_v)
+        self._v_cmd = v_cmd_to_real
+        # TODO: send the velocity command to the base by publishing to the
+        # /vel_cmd topic
+        # NOTE: look at sendVelocityCommand in RobotManager,
+        # understand relationship between sendVelocityCommand and sendVelocityCommandToReal
 
+        # NOTE: that sendVelocityCommand is overridden
+        # in SingleArmWholeBodyInterface
+        # (which AbstractHeronRobotManager inherits from) due
+        # to different control modes resulting in different sizes
+        # of qs and vs.
+        # TODO: make sure that this function and they either work together,
+        # or override again if they can't work toherther
+    def sendVelocityCommandToReal(self, v):
+        self.sendVelocityCommand(v)
+        
+    def stopRobot(self):
+        self._v_cmd[:] = 0.0
+        # raise NotImplementedError
+        # TODO: we need to stop be the base as well.
+        # option 1) send zero velocity commands.
+        # but then make sure that it doesn't keep going forward
+        # with a near-zero velocity (this happens on UR5e, that's why
+        # the freedrive is started because it actually stops the arm)
+        # option 2) programaticaly activate the emergency button
+        # option 3) stop just the arm, do nothing for the base, and
+        # clearly document that the robot has to be stopped by manually
+        # pressing the emergency button
+
+    def setFreedrive(self):
+        pass
+        # TODO: if it's possible to manually push the base, great,
+        # put that option here. if not, remove the above error throw,
+        # document that there's no freedrive for the base here
+        # and just put the arm to freedrive mode
+
+    def unSetFreedrive(self):
+        pass
 
 def heron_approximation() -> (
     tuple[pin.Model, pin.GeometryModel, pin.GeometryModel, pin.Data]

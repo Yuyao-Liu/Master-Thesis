@@ -28,10 +28,39 @@ class Adaptive_controller_manager:
         self.v_d = np.pi/40
         # initalize parameter
         self.err_sum = np.zeros(3)
-        self.x_h = np.array([1, -2, 3])
+        theta_rad = np.deg2rad(30)
+        Ry = np.array([
+            [np.cos(theta_rad), 0, np.sin(theta_rad)],
+            [0,                1, 0               ],
+            [-np.sin(theta_rad), 0, np.cos(theta_rad)]
+        ])
+        Rz = np.array([
+                [np.cos(theta_rad), -np.sin(theta_rad), 0],
+                [np.sin(theta_rad),  np.cos(theta_rad), 0],
+                [0,                 0,                  1]
+            ])
+        if robot.task == 1:
+            self.x_h = Rz@np.array([1, 0, 0])
+        if robot.task == 2:
+            self.x_h = Ry@np.array([1, 0, 0])
+        if robot.task == 3:
+            self.x_h = Rz@np.array([0, -1, 0])
+        if robot.task == 4:
+            self.x_h = Rz@np.array([1, 0, 0])
+            # self.k_h = np.array([3, -1, 2])
+        # if robot.task == 2:
+        #     Rz = np.array([
+        #         [np.cos(theta_rad), -np.sin(theta_rad), 0],
+        #         [np.sin(theta_rad),  np.cos(theta_rad), 0],
+        #         [0,                 0,                  1]
+        #     ])
+        #     self.x_h = Rz@np.array([1, 0, 0])
+        # self.x_h = np.random.randn(3)
+        # self.x_h = self.x_h/np.linalg.norm(self.x_h)
+        self.k_h = np.array([0.1, 0.1, 0.1])
         self.v_f = np.zeros(3)
         self.v_ref = np.array([1, 0, 0])
-        self.k_h = np.array([3, -1, 2])
+        
         self.time = time.perf_counter()
         self.starttime = time.perf_counter()
         self.x_h_history = []
@@ -83,8 +112,8 @@ class Adaptive_controller_manager:
         self.x_h = self.x_h / np.linalg.norm(self.x_h)
 
         # print(self.time - self.starttime)
-        if len(self.x_h_history) == 2e4:
-            self.save_history_to_mat("log.mat")
+        if len(self.x_h_history) == 6e3:
+            self.save_history_to_mat("es_2_.mat")
         return self.x_h
 
     def save_history_to_mat(self, filename):
@@ -119,25 +148,46 @@ if __name__ == "__main__":
     
     args.real=False
     args.visualizer=True
-    args.plotter = True
-    args.max_v_percentage=5
+    args.plotter = False
+    args.max_v_percentage=0.2
+    robot.base2ee = 0.75
+    # 1: open a revolving door 2: revolving drawer 3: sliding door 4/5: sliding drawer
+    task = 2
     # robot='ur5e', mode='whole_body', real=False, robot_ip='192.168.1.102', ctrl_freq=500, visualizer=True, viz_update_rate=-1, plotter=True, gripper='none', max_iterations=100000, start_from_current_pose=False, acceleration=0.3, max_v_percentage=0.3, debug_prints=False, save_log=False, save_dir='./data', run_name='latest_run', index_runs=False, past_window_size=5, controller_speed_scaling=1.0, contact_detecting_force=2.8, minimum_detectable_force_norm=3.0, visualize_collision_approximation=False, goal_error=0.01, tikhonov_damp=0.001, ik_solver='dampedPseudoinverse', alpha=0.01, beta=0.01, kp=1.0, kv=0.001, z_only=False, max_init_clik_iterations=10000, max_running_clik_iterations=1000, viz_test_path=False, randomly_generate_goal=False
-    Adaptive_controller = Adaptive_controller_manager(robot)
-    # move to a proper position for initialization
-    translation = np.array([-2.0,-2.5,0.5])
-    # translation = np.array([-0.0,-0.5,0.5])
-    theta = np.radians(90)
-    # rotation = np.array([[np.cos(theta), -np.sin(theta), 0], [-np.sin(theta), -np.cos(theta), 0], [0, 0, -1]])
-    rotation = np.array([[0, 0, 1], [0, 1, 0], [1, 0, 0]])
+    if task == 3:
+    # for silding door
+        parking_lot = np.array([-1, -1.15, np.deg2rad(0)])
+    else:
+        parking_lot = np.array([-1.5, -1.15, np.deg2rad(30)])
+    # parking_lot = np.array([0, 0, 0])
+    # parking_lot = np.array([0.5, 0.5, np.deg2rad(0)])
+    
+    # define the gripper pose for grabbing the handle
+    offset = np.array([parking_lot[0], parking_lot[1], 0])
+    if task == 1:
+    # for silding door
+        translation = np.array([-0.8, 0.5, 1]) + offset     
+    elif task == 3:
+        translation = np.array([-0.8, 0.2, 1]) + offset
+    else:
+        translation = np.array([-0.8, 0.0, 1]) + offset
+    rotation = np.array([[0, 0, -1], [0, -1, 0], [-1, 0, 0]])
     handle_pose = pin.SE3(rotation, translation)
+    
+    # define the gripper pose before reaching the grab pose
+    translation = np.array([-0.4, 0, 1.4]) + offset
+    pre_handle_pose = pin.SE3(rotation, translation)
     # Mgoal = getRandomlyGeneratedGoal(args)
     robot.handle_pose = handle_pose
-    robot.angle_desired = 120
+    robot.task = task
     if args.visualizer:
         robot.visualizer_manager.sendCommand({"Mgoal": handle_pose})
-        
+    robot.angle_desired = -45
+    if robot.task==3:
+        robot.angle_desired = -60    
     # time.sleep(5)
-    park_base(args, robot, (-1.2, -2.5, 0))
+    Adaptive_controller = Adaptive_controller_manager(robot)
+    park_base(args, robot, parking_lot)
     moveL_only_arm(args, robot, handle_pose)
     print('moveL done')
     Adaptive_controller.update_time()

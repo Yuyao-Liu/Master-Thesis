@@ -156,26 +156,29 @@ def get_mobile_base_model(underactuated: bool) -> tuple[pin.Model, pin.GeometryM
     # TODO: find heron (mir) numbers
     body_inertia = pin.Inertia.FromBox(30, 0.5, 0.3, 0.4)
     # maybe change placement to sth else depending on where its grasped
+    
     model_mobile_base.appendBodyToJoint(
         MOBILE_BASE_JOINT_ID, body_inertia, pin.SE3.Identity()
     )
-    box_shape = fcl.Box(0.5, 0.3, 0.4)
+    box_shape = fcl.Box(0.8, 0.5, 0.872)
     body_placement = pin.SE3.Identity()
+    body_placement.translation[2] += 0.436
     geometry_mobile_base = pin.GeometryObject(
         "box_shape", MOBILE_BASE_JOINT_ID, box_shape, body_placement.copy()
     )
 
     geometry_mobile_base.meshColor = np.array([1.0, 0.1, 0.1, 1.0])
     geom_model_mobile_base.addGeometryObject(geometry_mobile_base)
-    joint_placement.translation[0] = -0.1
-    joint_placement.translation[2] = 0.2
+    arm2mir = pin.SE3.Identity()
+    arm2mir.translation = np.array([-0.061854, -0.0045, 0.872])
+    arm2mir.rotation = np.array([[0, -1, 0], [1, 0, 0], [0 ,0 ,1]])
     # have to add the frame manually
     model_mobile_base.addFrame(
         pin.Frame(
             "mobile_base",
             MOBILE_BASE_JOINT_ID,
             0,
-            joint_placement.copy(),
+            arm2mir.copy(),
             pin.FrameType.JOINT,
         )
     )

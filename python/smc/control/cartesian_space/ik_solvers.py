@@ -1,5 +1,6 @@
 from typing import Callable
 import numpy as np
+import pinocchio as pin
 from qpsolvers import solve_qp
 
 # TODO: if importlib.files ... to make it an optional import
@@ -142,7 +143,7 @@ def parking_base(q, target_pose):
 
     # Extract robot's current pose
     x_r, y_r, theta_r = (q[0], q[1], np.arctan2(q[3], q[2]))  
-    x_t, y_t, theta_t = target_pose  
+    x_t, y_t, theta_t = (target_pose[0] ,target_pose[1] ,target_pose[2])  
 
     # Compute the relative position between robot and target
     dx = x_r - x_t
@@ -175,7 +176,6 @@ def parking_base(q, target_pose):
     qd = np.array([v, 0, omega, 0, 0, 0, 0, 0, 0])
     return qd
 
-
 def dampedPseudoinverse(
     tikhonov_damp: float, J: np.ndarray, err_vector: np.ndarray
 ) -> np.ndarray:
@@ -186,106 +186,96 @@ def dampedPseudoinverse(
     )
     return qd
 
-
 def jacobianTranspose(J: np.ndarray, err_vector: np.ndarray) -> np.ndarray:
     qd = J.T @ err_vector
     return qd
 
+import numpy as np
 import pinocchio as pin
-def keep_distance_nullspace(tikhonov_damp, q, J, err_vector, robot):
+
+
+def keep_distance_nullspace(
+    tikhonov_damp,
+    q,
+    J,
+    err_vector,
+    robot,
+    dt: float = 0.01,  # controller cycle time [s]
+    Kp_theta: float = 2.0,  # proportional gain for theta
+    Ki_theta: float = 0.1,  # integral gain for theta
+    integral_limit: float = np.pi,  # anti‑wind‑up saturation
+):
+
     J = np.delete(J, 1, axis=1)
-    # q = add_bias_and_noise(q)
+    # -------------------------- Primary task -------------------------- #
     (x_base, y_base, theta_base) = (q[0], q[1], np.arctan2(q[3], q[2]))
     T_w_e = robot.T_w_e
     (x_ee, y_ee) = (T_w_e.translation[0], T_w_e.translation[1])
-    J_lw = pin.computeFrameJacobian(robot.model, robot.data, q, robot.ee_frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
-    # J_w = pin.computeFrameJacobian(robot.model, robot.data, q, robot.ee_frame_id, pin.ReferenceFrame.WORLD)
-    # joint_weights = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
-    # W = np.diag(joint_weights)
 
-    # # Compute adaptive damping factor
-    # manipulability = compute_manipulability(J[:, 2:])
-    # lambda_adaptive = tikhonov_damp / manipulability
-    # # Compute the weighted damped pseudo-inverse
-    # JWJ = J @ np.linalg.inv(W) @ J.T + lambda_adaptive * np.eye(J.shape[0])
-    # J_pseudo = np.linalg.inv(W) @ J.T @ np.linalg.inv(JWJ)
-    
-    J_pseudo = J.T @ np.linalg.inv(J @ J.T + np.eye(J.shape[0], J.shape[0]) * tikhonov_damp)
-    # Compute primary task velocity
-    qd_task = J_pseudo @ err_vector
+    # Local‑world‑aligned EE Jacobian and damped pseudo‑inverse
+    J_lw = pin.computeFrameJacobian(
+        robot.model,
+        robot.data,
+        q,
+        robot.ee_frame_id,
+        pin.ReferenceFrame.LOCAL_WORLD_ALIGNED,
+    )
+    J_pseudo = J.T @ np.linalg.inv(J @ J.T + np.eye(J.shape[0]) * tikhonov_damp)
+    qd_task = J_pseudo @ err_vector  # primary task velocity
 
-    ### compute q_null ###
-    d_target = 0.6  # Minimum allowed EE-base distance
-    dx = x_ee - x_base
-    dy = y_ee - y_base
+    # --------------------- Null‑space: distance task ------------------ #
+    d_target = robot.base2ee  # desired base‑EE distance
+    dx, dy = x_ee - x_base, y_ee - y_base
     d_current = np.hypot(dx, dy)
-    # print(d_current)
     I = np.eye(J.shape[1])
-    N = I - J_pseudo @ J
-    
-    Jx = J[0, :]
-    Jy = J[1, :]
-    Jbx = np.zeros_like(Jx)
-    Jbx[0] = 1
-    Jd = (dx * (Jx - Jbx) + dy * Jy)/d_current
-    # z1 = -5 * Jd.T * np.sign(d_current - d_target)
-    z1 = -20 * Jd.T * (d_current - d_target)
-    # print(Jx,Jy)
-    # print(z1)
-    
+    N = I - J_pseudo @ J  # null‑space projector
+
+    Jx, Jy = J[0, :], J[1, :]
+    Jbx, Jby = np.zeros_like(Jx), np.zeros_like(Jx)
+    Jbx[0], Jby[0] = q[2], q[3]
+    Jd = (dx * (Jx - Jbx) + dy * (Jy - Jby)) / d_current
+    z1 = -20.0 * Jd.T * (d_current - d_target)
+
+    # ---------------- Null‑space: heading (theta) task ---------------- #
     z2 = np.zeros_like(z1)
-    
-    
-    J_lw = np.delete(J_lw,1,axis=1)
-    xd = J_lw @ qd_task
-    # J_w = np.delete(J_w,1,axis=1)
-    # xd_s = J_w @ qd_task
-    # print(xd_s-xd)
-    # qd = robot.getQd()
-    # xd = J_w @ qd
-    # print(xd)
+
+    # EE velocity direction and base heading direction
+    xd = (np.delete(J_lw, 1, axis=1) @ qd_task).flatten()
     dir_vee = np.array([xd[0], xd[1]])
     dir_base = np.array([q[2], q[3]])
-    dir_eb = np.array([dx, dy])
-    
-    ## b to a counterclockwise
-    def angle_between_vectors(a, b):
-        a = a / np.linalg.norm(a)
-        b = b / np.linalg.norm(b)
-        theta_a = np.arctan2(a[1], a[0])
-        theta_b = np.arctan2(b[1], b[0])
-        angle = theta_a - theta_b
-        angle = (angle + np.pi) % (2 * np.pi) - np.pi
 
-        # dot_product = np.dot(a, b)
-        # dot_product = np.clip(dot_product, -1.0, 1.0)
-        
-        # angle = np.arccos(dot_product)
-        
-        # cross_product = np.cross(a, b)
-        
-        # if cross_product < 0:
-        #     angle = -angle
-        if angle > np.pi/2:
-            angle = angle - np.pi
-        if angle < -np.pi/2:
-            angle = angle + np.pi
+    def angle_between_vectors(a: np.ndarray, b: np.ndarray) -> float:
+        """Signed smallest angle from *b* to *a* (counter‑clockwise positive)."""
+        a_n, b_n = a / np.linalg.norm(a), b / np.linalg.norm(b)
+        theta_a, theta_b = np.arctan2(a_n[1], a_n[0]), np.arctan2(b_n[1], b_n[0])
+        angle = (theta_a - theta_b + np.pi) % (2.0 * np.pi) - np.pi
+        # fold >90° to keep the control gentle
+        if angle > np.pi / 2:
+            angle -= np.pi
+        if angle < -np.pi / 2:
+            angle += np.pi
         return angle
-    dir_e_z = np.array([T_w_e.rotation[0, 2], T_w_e.rotation[0, 1]])
-    theta = angle_between_vectors(dir_vee, dir_base)
-    # theta = angle_between_vectors(dir_e_z, dir_base)
-    z2[1] = 2 * (theta)
-    # z2[2] = -z2[1]
-    # print(z2[1])
-    if d_current < 0.62:
-        qd_null = N @ (z1 + z2)
-        # qd_null = N @ z2
-    else:
-        qd_null = N @ z2
+
+    theta_err = angle_between_vectors(dir_vee, dir_base)
+
+    # --------------------- theta integral control -------------------- #
+    # Persistent (static) accumulator stored on the function object
+    if not hasattr(keep_distance_nullspace, "_theta_int"):
+        keep_distance_nullspace._theta_int = 0.0
+    keep_distance_nullspace._theta_int += theta_err * dt
+    # anti‑wind‑up clamping
+    keep_distance_nullspace._theta_int = np.clip(
+        keep_distance_nullspace._theta_int, -integral_limit, integral_limit
+    )
+
+    # Proportional + integral term for theta control
+    z2[1] = Kp_theta * theta_err + Ki_theta * keep_distance_nullspace._theta_int
+
+    # --------------------- Combine and return ------------------------ #
     qd_null = N @ (z1 + z2)
-    # Combine primary task velocity and null space velocity
-    qd = np.insert(qd_task + qd_null, 1, 0)
+    qd = np.insert(qd_task + qd_null, 1, 0.0)  # re‑insert the removed DoF
     return qd
+
 
 # TODO: put something into q of the QP
 # also, put in lb and ub
@@ -361,7 +351,6 @@ def QPquadprog(
     qd = solve_qp(P, q, G, h, A, b, lb, ub, solver="quadprog", verbose=False)
     # qd = solve_qp(P, q, G, h, A, b, lb, ub, solver="proxqp")
     return qd
-
 
 def QPproxsuite(
     qp: proxqp.dense.QP,
