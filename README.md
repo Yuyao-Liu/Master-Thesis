@@ -21,7 +21,46 @@ Overall, the framework allows a mobile manipulator to approach an unknown door o
 ## Usage
 
 The project provides example scripts and modules to run both **simulated experiments** and **real-world robot runs**. The typical usage involves the following sequence: (1) navigate the mobile base to an approach position, (2) execute a whole-body motion (base + arm) to open or slide the mechanism, and (3) estimate mechanism parameters online during the motion. Below are instructions for running the system:
+1.  **Get SMC**
+    
 
+```bash
+git clone https://gitlab.control.lth.se/marko-g/ur_simple_control.git
+```
+
+2.  **Navigate to ur\_simple\_control/python**
+    
+
+```bash
+cd ur_simple_control/python
+```
+
+3.  **Local install of SMC**
+    
+
+```bash
+pip install -e .
+```
+
+4.  **Install pinocchio through apt**  
+    Follow the instructions at [https://stack-of-tasks.github.io/pinocchio/download.html](https://stack-of-tasks.github.io/pinocchio/download.html)  
+    Importantly, copy-paste the `export ...` commands under the **"Configure environment variables"** section into your `~/.bashrc`.  
+    Then restart the terminal or run:
+    
+
+```bash
+source ~/.bashrc
+```
+
+5.  **Install other Python dependencies**
+    
+
+```bash
+pip install crocoddyl matplotlib meshcat ur_rtde \
+            qpsolvers ecos example_robot_data meshcat_shapes \
+            pyqt6 opencv-python qpsolvers quadprog \
+            proxsuite casadi pin-pink matplotlib
+```
 -   **Simulation:** You can run the entire pipeline in a physics-free simulation (kinematic simulation with visualization). Ensure you installed the `smc` package and have a display (MeshCat) for visualization. To simulate a scenario, execute the main control script (for example, `src/mainloop.py`) with Python:
     
     ```bash
