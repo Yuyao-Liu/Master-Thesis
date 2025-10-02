@@ -143,11 +143,17 @@ class SMCHeronNode(Node):
         )
 
         self._dt = 1 / self.args.ctrl_freq
-
+        self.get_logger().info(
+            f"### ctrl_freq = {self.args.ctrl_freq} HZ"
+        )
         self._pub_timer = self.create_timer(self._dt, self.send_cmd)
         self._receive_arm_q_timer = self.create_timer(self._dt, self.receive_arm_q)
         self.current_iteration = 0
-
+        ##
+        self._waiting_for_next_loop = False          # 正在 2 s 等待？
+        self._wait_counter = 0                       # 已等待的周期数
+        self._wait_iterations = int(1 / self._dt)    # 2 s 对应的周期数
+        
         ########################################################
         # connect to smc
         ###########################################################
@@ -189,66 +195,56 @@ class SMCHeronNode(Node):
     # 2 -> twist.angular.z
     # left arm indeces are 15-21 (last included)
     # right arm indeces are 22-28 (last included)
+    def _publish_twist(self):
+        twist_msg = Twist()
+        twist_msg.linear.x  = self.robot._v_cmd[0]
+        twist_msg.linear.y  = self.robot._v_cmd[1]
+        twist_msg.angular.z = self.robot._v_cmd[2]
+        self._cmd_vel_pub.publish(twist_msg)
+        self.robot._rtde_control.speedJ(self.robot._v_cmd[3:], self.robot._acceleration, self.robot._dt)
 
     def send_cmd(self):
+        # 2 秒等待期间，只保持零速度并计时
+        if self._waiting_for_next_loop:
+            self._wait_counter += 1
+            self.robot._v_cmd[:] = 0.0
+            if self._wait_counter >= self._wait_iterations:
+                # 等满 2 s → 真正切换到下一个 controlLoop
+                self._waiting_for_next_loop = False
+                self._wait_counter = 0
+                mode, self.loop_manager = self.modes_and_loops.pop(0)
+                self.robot.mode = mode
+                self.get_logger().info(
+                    f"### Switched to control loop "
+                    f"{self.loop_manager.controlLoop.func.__name__}"
+                )
+            self._publish_twist()
+            return        # 等待阶段不再执行本周期控制
         # self.get_logger().info("TIMER_CMD")
         self.current_iteration += 1
         breakFlag = self.loop_manager.run_one_iter(self.loop_manager.current_iteration)
         if breakFlag:
+            # ① 立即把速度清零
             self.robot._v_cmd[:] = 0.0
-            if len(self.modes_and_loops) > 0:
-                mode, self.loop_manager = self.modes_and_loops.pop(0)
-                self.robot.mode = mode
+
+            if self.modes_and_loops:          # 还有后续 loop
                 self.get_logger().info(
-                    "about to run: " + str(self.loop_manager.controlLoop.func.__name__)
+                    "### Current loop finished, pausing 2 s before next."
                 )
-            else:     
+                self._waiting_for_next_loop = True   # 开始 2 s 计时
+                self._wait_counter = 0
+            else:                                # ② 已经是最后一个 loop
                 self.get_logger().info(
-                    "Task finished! Set v_cmd = 0")
-                self.robot.stopRobot()
+                    "### All loops done. Stopping node and holding position."
+                )
+                # 停掉定时器 → 节点不再发送指令
+                self._pub_timer.cancel()
+                self._receive_arm_q_timer.cancel()
+                self._publish_twist()            # 发最后一条零速度指令
+                return                           # 彻底退出 send_cmd
 
-        if not self.odom_initialized:
-            self.get_logger().info(
-                "odom intialized, hence not publishing anything!"
-            )
-
-        # self.get_logger().info("current iteration: " + str(self.current_iteration))
-        # self.get_logger().info(str(self.robot._v_cmd))
-        if not np.isnan(self.robot._v_cmd).any():
-            twist_msg = Twist()
-            # twist_msg.header.stamp = Time().to_msg()
-
-            # TEST
-            # msg.velocity[0] = (
-            #    np.sin(self.loop_manager.current_iteration / (self.args.ctrl_freq * 2))
-            #    / 6
-            # )
-            # msg.velocity[1] = (
-            #    np.sin(self.loop_manager.current_iteration / (self.args.ctrl_freq * 2))
-            #    / 6
-            # )
-            # msg.velocity[2] = (
-            #    -1
-            #    * np.sin(
-            #        self.loop_manager.current_iteration / (self.args.ctrl_freq * 2)
-            #    )
-            #    / 6
-            # )
-            
-            # REAL
-            twist_msg.linear.x = self.robot._v_cmd[0] 
-            twist_msg.linear.y = self.robot._v_cmd[1] 
-            twist_msg.angular.z = self.robot._v_cmd[2]
-            # twist_msg.angular.z = 0.1
-            
-            # self.get_logger().info(str(self.robot._q))
-            ## TODO slower
-            self._cmd_vel_pub.publish(twist_msg)
-            # send v_cmd to ur5e
-            # self.get_logger().info(
-            #     str(self.robot._v_cmd)
-            # )
-            self.robot._rtde_control.speedJ(self.robot._v_cmd[3:], self.robot._acceleration, self.robot._dt)
+        # ── 未触发 break 或等待结束后，正常发布速度 ──
+        self._publish_twist()
             
     def callback_base_odom(self, msg: Odometry):
         # self.robot._v[0] = msg.twist.twist.linear.x
@@ -325,7 +321,7 @@ class SMCHeronNode(Node):
 
 
 
-class GazeboSMCHeronNode(Node):
+class oldGazeboSMCHeronNode(Node):
     def __init__(
         self,
         args,
@@ -368,7 +364,9 @@ class GazeboSMCHeronNode(Node):
         )
 
         self._dt = 1 / self.args.ctrl_freq
-
+        self.get_logger().info(
+            f"### ctrl_freq = {self.args.ctrl_freq} HZ"
+        )
         self._pub_timer = self.create_timer(self._dt, self.send_cmd)
         self._receive_arm_q_timer = self.create_timer(self._dt, self.receive_arm_q)
         self.current_iteration = 0
@@ -420,6 +418,7 @@ class GazeboSMCHeronNode(Node):
         self.current_iteration += 1
         breakFlag = self.loop_manager.run_one_iter(self.loop_manager.current_iteration)
         if breakFlag:
+            self.robot._v_cmd[:] = 0.0
             if len(self.modes_and_loops) > 0:
                 mode, self.loop_manager = self.modes_and_loops.pop(0)
                 self.robot.mode = mode
@@ -438,35 +437,16 @@ class GazeboSMCHeronNode(Node):
 
         # self.get_logger().info("current iteration: " + str(self.current_iteration))
         # self.get_logger().info(str(self.robot._v_cmd))
-        if self.args.unreal:
-            twist_msg = Twist()
-            # twist_msg.header.stamp = Time().to_msg()
-
-            # TEST
-            # msg.velocity[0] = (
-            #    np.sin(self.loop_manager.current_iteration / (self.args.ctrl_freq * 2))
-            #    / 6
-            # )
-            # msg.velocity[1] = (
-            #    np.sin(self.loop_manager.current_iteration / (self.args.ctrl_freq * 2))
-            #    / 6
-            # )
-            # msg.velocity[2] = (
-            #    -1
-            #    * np.sin(
-            #        self.loop_manager.current_iteration / (self.args.ctrl_freq * 2)
-            #    )
-            #    / 6
-            # )
-            # REAL
-            twist_msg.linear.x = self.robot._v_cmd[0] 
-            twist_msg.linear.y = self.robot._v_cmd[1] 
-            twist_msg.angular.z = self.robot._v_cmd[2]
-            # self.get_logger().info(str(self.robot._q))
-            ## TODO slower
-            self._cmd_vel_pub.publish(twist_msg)
-            # send v_cmd to ur5e
-            self.robot._q = pin.integrate(self.robot.model, self.robot._q, self.robot._v_cmd * self.robot._dt)
+        
+        twist_msg = Twist()
+        twist_msg.linear.x = self.robot._v_cmd[0] 
+        twist_msg.linear.y = self.robot._v_cmd[1] 
+        twist_msg.angular.z = self.robot._v_cmd[2]
+        # self.get_logger().info(str(self.robot._q))
+        ## TODO slower
+        self._cmd_vel_pub.publish(twist_msg)
+        # send v_cmd to ur5e
+        self.robot._q = pin.integrate(self.robot.model, self.robot._q, self.robot._v_cmd * self.robot._dt)
              
     def callback_base_odom(self, msg: Odometry):
         # self.robot._v[0] = msg.twist.twist.linear.x
@@ -539,3 +519,231 @@ class GazeboSMCHeronNode(Node):
         while not self.get_clock().now().nanoseconds > 0:
             rclpy.spin_once(self, timeout_sec=0.1)
         self.get_logger().info("Simulated time is now active!")
+
+class GazeboSMCHeronNode(Node):
+    def __init__(
+        self,
+        args,
+        robot: GazeboHeronRobotManager,
+        # robot: rosSimulatedHeronRobotManager,
+        modes_and_loops: list[
+            tuple[AbstractRobotManager.control_mode, ControlLoopManager]
+        ],
+    ):
+        super().__init__("SMCHeronNode")
+        if args.sim:
+            self.set_parameters(
+                [
+                    rclpy.parameter.Parameter(
+                        "use_sim_time", rclpy.Parameter.Type.BOOL, True
+                    )
+                ]
+            )
+            self.wait_for_sim_time()
+        self.robot = robot
+        mode, self.loop_manager = modes_and_loops.pop(0)
+        self.robot.mode = mode
+        self.modes_and_loops = modes_and_loops
+        self.args = args
+        # give me the latest thing even if there wasn't an update
+        # qos_prof = rclpy.qos.QoSProfile(
+        #    reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
+        #    durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL,
+        #    history=rclpy.qos.HistoryPolicy.KEEP_LAST,
+        #    depth=1,
+        # )
+
+        self._cb = ReentrantCallbackGroup()
+
+        self._ns = args.ros_namespace
+        # self._ns = get_rosified_name(self.get_namespace())
+
+        self.get_logger().info(
+            f"### Starting smc heron node example under namespace {self._ns}"
+        )
+
+        self._dt = 1 / self.args.ctrl_freq
+        self.get_logger().info(
+            f"### ctrl_freq = {self.args.ctrl_freq} HZ"
+        )
+        self._pub_timer = self.create_timer(self._dt, self.send_cmd)
+        self._receive_arm_q_timer = self.create_timer(self._dt, self.receive_arm_q)
+        self.current_iteration = 0
+        ##
+        self._waiting_for_next_loop = False          # Waiting for 2 seconds?
+        self._wait_counter = 0                       # Number of waited cycles
+        self._wait_iterations = int(1 / self._dt)    # Number of cycles corresponding to 2 seconds
+
+        ########################################################
+        # connect to smc
+        ###########################################################
+
+        # self.sub_amcl = self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, qos_prof)
+
+        # this qos is incompatible
+        # self.sub_joint_states = self.create_subscription(JointState, f"{self._ns}/joint_states", self.callback_arms_state, qos_prof)
+
+        qos_prof2 = rclpy.qos.QoSProfile(
+            #    reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
+            #    durability = rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL,
+            #    history = rclpy.qos.HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+        self._cmd_vel_pub = self.create_publisher(
+            Twist, "/cmd_vel", 1
+        )
+        # self.get_logger().info(f"{self._ns}/platform/joints_cmd")
+        # self.robot.set_publisher_joints_cmd(self._cmd_pub)
+        if self.args.robot == "yummi":
+            self.sub_base_odom = self.create_subscription(
+                Odometry, f"{self._ns}/platform/odometry", self.callback_base_odom, 1
+            )
+        if self.args.robot == "heron":
+            self.sub_base_odom = self.create_subscription(
+                Odometry, f"/odom", self.callback_base_odom, 1
+            )
+            self.get_logger().info(
+                    "subscription for odom created" 
+                )
+        self.odom_initialized = False
+        self.init_odom = np.zeros(3)
+
+    ##########
+    # base is a twist which is constructed from the first 3 msg.velocities
+    # 0 -> twist.linear.x
+    # 1 -> twist.linear.y
+    # 2 -> twist.angular.z
+    # left arm indeces are 15-21 (last included)
+    # right arm indeces are 22-28 (last included)
+    
+    ##
+    def _publish_twist(self):
+        twist_msg = Twist()
+        twist_msg.linear.x  = self.robot._v_cmd[0]
+        twist_msg.linear.y  = self.robot._v_cmd[1]
+        twist_msg.angular.z = self.robot._v_cmd[2]
+        self._cmd_vel_pub.publish(twist_msg)
+        # Synchronously update internal q
+        self.robot._q = pin.integrate(self.robot.model,
+                                      self.robot._q,
+                                      self.robot._v_cmd * self.robot._dt)
+
+    def send_cmd(self):
+        # During the 2-second wait period, only keep zero velocity and count time
+        if self._waiting_for_next_loop:
+            self._wait_counter += 1
+            self.robot._v_cmd[:] = 0.0
+            if self._wait_counter >= self._wait_iterations:
+                # Waited for full 2 seconds → actually switch to the next controlLoop
+                self._waiting_for_next_loop = False
+                self._wait_counter = 0
+                mode, self.loop_manager = self.modes_and_loops.pop(0)
+                self.robot.mode = mode
+                self.get_logger().info(
+                    f"### Switched to control loop "
+                    f"{self.loop_manager.controlLoop.func.__name__}"
+                )
+            self._publish_twist()
+            return        # Do not execute the control for this cycle during the wait period
+
+        # ── Normal execution of the current controlLoop ─────────────────
+        self.current_iteration += 1
+        breakFlag = self.loop_manager.run_one_iter(
+            self.loop_manager.current_iteration
+        )
+
+        if breakFlag:
+            # ① Immediately set velocity to zero
+            self.robot._v_cmd[:] = 0.0
+
+            if self.modes_and_loops:          # There are subsequent loops
+                self.get_logger().info(
+                    "### Current loop finished, pausing 2 s before next."
+                )
+                self._waiting_for_next_loop = True   # Start 2-second timing
+                self._wait_counter = 0
+            else:                                # ② This is already the last loop
+                self.get_logger().info(
+                    "### All loops done. Stopping node and holding position."
+                )
+                # Stop the timer → the node will no longer send commands
+                self._pub_timer.cancel()
+                self._receive_arm_q_timer.cancel()
+                self._publish_twist()            # Send the last zero-velocity command
+                return                           # Completely exit send_cmd
+
+        # ── If break not triggered or after waiting ends, publish velocity normally ──
+        self._publish_twist()
+             
+    def callback_base_odom(self, msg: Odometry):
+        # self.robot._v[0] = msg.twist.twist.linear.x
+        # self.robot._v[1] = msg.twist.twist.linear.y
+        ## TODO: check that z can be used as cos(theta) and w as sin(theta)
+        ## (they could be defined some other way or theta could be offset of something)
+        # self.robot._v[2] = msg.twist.twist.angular.z
+        # self.robot._v[3] = 0  # for consistency
+        
+        # Marko's original code, there is something wrong
+        # costh2 = msg.pose.pose.orientation.w
+        # sinth2 = np.linalg.norm(
+        #     [
+        #         msg.pose.pose.orientation.x,
+        #         msg.pose.pose.orientation.y,
+        #         msg.pose.pose.orientation.z,
+        #     ]
+        # )
+        # th = 2 * np.arctan2(sinth2, costh2)
+        
+        # My version
+        q = msg.pose.pose.orientation
+        th = -2 * np.arctan2(q.z, q.w)
+        
+        if not self.odom_initialized:
+            self.init_odom[0] = msg.pose.pose.position.x
+            self.init_odom[1] = msg.pose.pose.position.y
+            self.init_odom[2] = th
+            self.odom_initialized = True
+            self.get_logger().info(str(self.init_odom))
+        if (self.args.unreal and self.odom_initialized) or self.current_iteration < 50:
+            T_odom = np.zeros((3, 3))
+            T_odom[0, 0] = np.cos(self.init_odom[2])
+            T_odom[0, 1] = -1 * np.sin(self.init_odom[2])
+            T_odom[0, 2] = self.init_odom[0]
+            T_odom[1, 0] = np.sin(self.init_odom[2])
+            T_odom[1, 1] = np.cos(self.init_odom[2])
+            T_odom[1, 2] = self.init_odom[1]
+            T_odom[2, 2] = 1.0
+            p_odom = np.array(
+                [
+                    msg.pose.pose.position.x - self.init_odom[0],
+                    msg.pose.pose.position.y - self.init_odom[1],
+                ]
+            )
+            # T_inv_odom = np.zeros((3, 3))
+            # T_inv_odom[:2, :2] = T_odom[:2, :2].T
+            # T_inv_odom[:2, 2] = (-1 * T_odom[:2, :2].T) @ T_odom[:2, 2]
+            # T_inv_odom[2, 2] = 1.0
+            # p_ctrl = T_inv_odom @ p_odom
+            # p_ctrl = (T_odom @ p_odom)[:2]
+            p_ctrl = T_odom[:2, :2] @ p_odom
+            self.robot._q[0] = p_ctrl[0]
+            self.robot._q[1] = p_ctrl[1]
+            self.robot._q[2] = np.cos(self.init_odom[2] - th)
+            self.robot._q[3] = np.sin(self.init_odom[2] - th)
+            # self.get_logger().info(str(self.robot._q))
+            # self.get_logger().info(str(th))
+            # self.get_logger().info(str(self.init_odom))
+        # self.get_logger().info("CALLBACK_ODOM")
+        # self.get_logger().info(str(self.robot._q[:4]))
+        # self.get_logger().info(str(self.init_odom))
+
+    def receive_arm_q(self):
+        pass
+
+    def wait_for_sim_time(self):
+        """Wait for the /clock topic to start publishing."""
+        self.get_logger().info("Waiting for simulated time to be active...")
+        while not self.get_clock().now().nanoseconds > 0:
+            rclpy.spin_once(self, timeout_sec=0.1)
+        self.get_logger().info("Simulated time is now active!")
+

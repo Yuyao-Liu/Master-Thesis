@@ -21,8 +21,9 @@ import time
 from scipy.io import savemat
 
 q_park = []
-q_u_ref = []
-T_w_e_u_ref = []
+q_pull = []
+T_w_e_pull = []
+rotation_pull = []
 def controlLoopClik(
     #                       J           err_vec     v_cmd
     ik_solver: Callable[[np.ndarray, np.ndarray], np.ndarray],
@@ -143,9 +144,9 @@ def controlLoopClik_park(robot, clik_controller, target_pose, i, past_data):
     return breakFlag, save_past_item, log_item
 
 def park_base(
-    args: Namespace, robot: SingleArmInterface, target_pose, run=False
+    args: Namespace, robot: SingleArmInterface, target_pose, run=True
 ) -> None | ControlLoopManager:
-    time.sleep(5)
+    # time.sleep(5)
     # assert type(T_w_goal) == pin.SE3
     controlLoop = partial(controlLoopClik_park, robot, parking_base, target_pose)
     # we're not using any past data or logging, hence the empty arguments
@@ -167,7 +168,7 @@ def park_base(
         return loop_manager
 
 def moveL_only_arm(
-    args: Namespace, robot: SingleArmInterface, T_w_goal: pin.SE3, run=False
+    args: Namespace, robot: SingleArmInterface, T_w_goal: pin.SE3, run=True
 ) -> None | ControlLoopManager:
     """
     moveL
@@ -176,7 +177,7 @@ def moveL_only_arm(
     send a SE3 object as goal point.
     if you don't care about rotation, make it np.zeros((3,3))
     """
-    time.sleep(2)
+    # time.sleep(2)
     assert type(T_w_goal) == pin.SE3
     ik_solver = getIKSolver(args, robot)
     controlLoop = partial(
@@ -239,8 +240,8 @@ def compute_rotated_angle(handle_pose, T_w_e, axis_point, axis_direction):
 
     return angle_deg
 
-def move_u_ref(args: Namespace, robot: SingleArmInterface, Adaptive_controller, run=False):
-    time.sleep(2)
+def move_u_ref(args: Namespace, robot: SingleArmInterface, Adaptive_controller, run=True):
+    # time.sleep(2)
     Adaptive_controller.update_time()
     """
     move_u_ref
@@ -269,15 +270,18 @@ def move_u_ref(args: Namespace, robot: SingleArmInterface, Adaptive_controller, 
         return loop_manager
 
 def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, new_pose, i, past_data): 
-    global q_u_ref
-    global T_w_e_u_ref
+    global q_pull
+    global T_w_e_pull
+    global rotation_pull
     breakFlag = False
     log_item = {}
     save_past_item = {}
     q = robot.q
     T_w_e = robot.T_w_e.translation
-    T_w_e_u_ref.append(T_w_e.copy())
-    q_u_ref.append(q.copy())
+    rotation = robot.T_w_e.rotation
+    rotation_pull.append(rotation.copy())
+    T_w_e_pull.append(T_w_e.copy())
+    q_pull.append(q.copy())
     # x, y, z, omega, q_1, q_2, q_3, q_4, q_5, q_6, g_1, g_2
     # print(q)
     # TODO set a proper omega
@@ -293,23 +297,35 @@ def controlLoopClik_u_ref(robot: SingleArmInterface, Adaptive_controller, new_po
     angle_moved = compute_rotated_angle(robot.handle_pose, robot.T_w_e, axis_point = np.array([-2.3, -0.65-0.8, 1]), axis_direction = np.array([0,0,1]))
     # print(angle_moved)
     # K = abs(angle_moved)
-    if abs(angle_moved) > 75:
+    if robot.task == 1:
+        max_len = 600
+    if robot.task == 2:
+        max_len = 300
+    if robot.task == 3:
+        max_len = 600
+    # print(len(q_pull))
+    if len(q_pull) >= max_len:
         # Adaptive_controller.save_history_to_mat("log.mat")
         breakFlag = True
-        savemat("q_u_ref.mat", {"q_u_ref": np.array(q_u_ref)})
-        savemat("T_w_e_u_ref.mat", {"T_w_e_u_ref": np.array(T_w_e_u_ref)})
-        print("q_u_ref and T_w_e_u_ref saved")
+        v_cmd = np.zeros(9)
+        robot.sendVelocityCommand(v_cmd)
+        savemat("q_pull.mat", {"q_pull": np.array(q_pull)})
+        savemat("T_w_e_pull.mat", {"T_w_e_pull": np.array(T_w_e_pull)})
+        savemat("rotation_pull.mat", {"rotation_pull": np.array(rotation_pull)})
+        print("q_pull, rotation_pull and T_w_e_pull saved")
+        return breakFlag, save_past_item, log_item
     
     v_max = np.pi/40
     # v = np.clip(K * v_max, -v_max, v_max)
     v = v_max
     robot.v_ee = v
-    R = 0.8
     mode = robot.task
     if mode == 1:
+        R = 0.8
         # open a revolving door
         err_vector = np.array([0, 0, -v, v/R, 0, 0])
     elif mode == 2:
+        R = 0.8
         # open a revolving drawer
         err_vector = np.array([0, 0, -v, 0, -v/R, 0])
     elif mode == 3:
